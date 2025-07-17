@@ -16,7 +16,7 @@ class TaskDecomposerAgent:
         Args:
             api_key (Optional[str]): API ключ OpenAI. Если не указан, берется из настроек.
         """
-        self.client = OpenAI(api_key=api_key or settings.OPENAI_API_KEY)
+        self.client = OpenAI(settings.OPENAI_API_KEY)
         
     async def decompose_task(self, user_prompt: str) -> str:
         """
