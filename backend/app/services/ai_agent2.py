@@ -17,9 +17,9 @@ class CodeGeneratorAgent:
         Args:
             api_key (Optional[str]): API ключ OpenAI. Если не указан, берется из настроек.
         """
-        self.client = OpenAI(settings.OPENAI_API_KEY)
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
         
-    async def generate_code(self, spec_json: str) -> str:
+    def generate_code(self, spec_json: str) -> str:
         """
         Генерирует код проекта на основе архитектурной спецификации.
         
@@ -75,8 +75,8 @@ class CodeGeneratorAgent:
         user_message = f"На основе следующей архитектурной спецификации создай код проекта: {spec_json}"
         
         try:
-            response: ChatCompletion = await self.client.chat.completions.create(
-                model="gpt-4-turbo-preview",  # Используем GPT-4 для лучшего качества кода
+            response = self.client.chat.completions.create(
+                model="gpt-3.5-turbo",  
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message}

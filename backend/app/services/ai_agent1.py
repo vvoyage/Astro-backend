@@ -17,9 +17,9 @@ class ArchitectAgent:
         Args:
             api_key (Optional[str]): API ключ OpenAI. Если не указан, берется из настроек.
         """
-        self.client = OpenAI(settings.OPENAI_API_KEY)
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
         
-    async def generate_architecture(self, tasks_json: str) -> str:
+    def generate_architecture(self, tasks_json: str) -> str:
         """
         Генерирует архитектурную спецификацию на основе списка задач.
         
@@ -83,7 +83,7 @@ class ArchitectAgent:
         user_message = f"На основе следующих задач создай архитектурную спецификацию: {tasks_json}"
         
         try:
-            response: ChatCompletion = await self.client.chat.completions.create(
+            response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": system_prompt},

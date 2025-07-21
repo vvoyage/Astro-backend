@@ -6,7 +6,7 @@ from app.services.ai_agent2 import CodeGeneratorAgent
 
 logger = logging.getLogger(__name__)
 
-async def generate_project(user_prompt: str) -> Dict:
+def generate_project(user_prompt: str) -> Dict:
     """
     Генерирует проект на основе пользовательского промпта, используя цепочку ИИ-агентов.
     
@@ -25,17 +25,17 @@ async def generate_project(user_prompt: str) -> Dict:
         
         # 1. Декомпозиция задачи
         decomposer = TaskDecomposerAgent()
-        tasks_json = await decomposer.decompose_task(user_prompt)
+        tasks_json = decomposer.decompose_task(user_prompt)
         logger.info("Декомпозиция задачи завершена успешно")
         
         # 2. Генерация архитектуры
         architect = ArchitectAgent()
-        architecture_json = await architect.generate_architecture(tasks_json)
+        architecture_json = architect.generate_architecture(tasks_json)
         logger.info("Генерация архитектуры завершена успешно")
         
         # 3. Генерация кода
         generator = CodeGeneratorAgent()
-        final_code = await generator.generate_code(architecture_json)
+        final_code = generator.generate_code(architecture_json)
         logger.info("Генерация кода завершена успешно")
         
         return final_code

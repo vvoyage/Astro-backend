@@ -16,9 +16,9 @@ class TaskDecomposerAgent:
         Args:
             api_key (Optional[str]): API ключ OpenAI. Если не указан, берется из настроек.
         """
-        self.client = OpenAI(settings.OPENAI_API_KEY)
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
         
-    async def decompose_task(self, user_prompt: str) -> str:
+    def decompose_task(self, user_prompt: str) -> str:
         """
         Разбивает задачу пользователя на подзадачи используя OpenAI API.
         
@@ -46,7 +46,7 @@ class TaskDecomposerAgent:
         user_message = f'Разбей следующую задачу на подзадачи: "{user_prompt}"'
         
         try:
-            response: ChatCompletion = await self.client.chat.completions.create(
+            response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": system_prompt},
