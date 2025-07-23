@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     VERSION: str = "1.0.0"
     
-    DATABASE_URL: str
+    DATABASE_URL: str  # асинхронное подключение для приложения
+    SYNC_DATABASE_URL: str  # синхронное подключение для миграций
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
