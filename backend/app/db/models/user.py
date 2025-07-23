@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 from sqlalchemy import String, DateTime, Boolean
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.database import Base
@@ -26,4 +26,7 @@ class User(Base):
         DateTime(timezone=True), 
         server_default=func.now(), 
         onupdate=func.now()
-    ) 
+    )
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    projects = relationship("Project", back_populates="user")
