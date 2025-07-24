@@ -11,7 +11,7 @@ class Project(Base):
     
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
-    template_id: Mapped[UUID] = mapped_column(ForeignKey("templates.id"))
+    template_id: Mapped[UUID] = mapped_column(ForeignKey("templates.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     s3_path: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
