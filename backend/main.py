@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from app.core.config import settings
 from app.api.v1 import auth, users, projects, assets, templates, snapshots, deployments
+from app.db import models
+from fastapi.middleware.cors import CORSMiddleware
 
 def create_application() -> FastAPI:
     """
@@ -16,6 +18,20 @@ def create_application() -> FastAPI:
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json"
+    )
+    
+    # Настройка безопасности для Swagger UI
+    application.swagger_ui_init_oauth = {
+        "usePkceWithAuthorizationCodeGrant": True
+    }
+    
+    # Добавляем схему безопасности
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
     
     # Подключаем все роутеры
