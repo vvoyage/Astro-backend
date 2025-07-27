@@ -14,6 +14,7 @@ class Project(Base):
     template_id: Mapped[UUID] = mapped_column(ForeignKey("templates.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     s3_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    prompt: Mapped[str] = mapped_column(String, nullable=False)  
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now()

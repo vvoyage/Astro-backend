@@ -27,6 +27,24 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str
 
+    # MinIO settings
+    MINIO_ENDPOINT: str 
+    MINIO_ACCESS_KEY: str 
+    MINIO_SECRET_KEY: str 
+    MINIO_SECURE: bool 
+    MINIO_PUBLIC_URL: str 
+
+    # RabbitMQ settings
+    RABBITMQ_URL: str 
+
+    # Kubernetes settings
+    KUBERNETES_NAMESPACE: str 
+    KUBERNETES_SERVICE_ACCOUNT: str 
+    
+    # Node.js builder settings
+    NODE_VERSION: str 
+    NPM_REGISTRY: str 
+
     # Конфигурация в Pydantic 2.x
     model_config = SettingsConfigDict(
         env_file=".env",

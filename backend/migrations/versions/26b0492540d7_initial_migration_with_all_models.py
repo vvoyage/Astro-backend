@@ -1,8 +1,8 @@
-"""Initial migration
+"""initial migration with all models
 
-Revision ID: fa2b4e6a94b0
+Revision ID: 26b0492540d7
 Revises: 
-Create Date: 2025-07-23 22:12:17.765679
+Create Date: 2025-07-27 03:39:27.563011
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'fa2b4e6a94b0'
+revision: str = '26b0492540d7'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -41,9 +41,10 @@ def upgrade() -> None:
     op.create_table('projects',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('user_id', sa.Uuid(), nullable=False),
-    sa.Column('template_id', sa.Uuid(), nullable=False),
+    sa.Column('template_id', sa.Uuid(), nullable=True),
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('s3_path', sa.String(length=255), nullable=False),
+    sa.Column('prompt', sa.String(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['template_id'], ['templates.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
@@ -60,9 +61,9 @@ def upgrade() -> None:
     op.create_table('deployments',
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('project_id', sa.Uuid(), nullable=False),
-    sa.Column('provider', sa.String(length=50), nullable=False),
+    sa.Column('provider', sa.Enum('VERCEL', 'NETLIFY', 'GITHUB_PAGES', name='providertype'), nullable=False),
     sa.Column('domain', sa.String(length=255), nullable=False),
-    sa.Column('status', sa.String(length=50), nullable=False),
+    sa.Column('status', sa.Enum('PENDING', 'ACTIVE', 'FAILED', name='deploymentstatus'), nullable=False),
     sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ),
     sa.PrimaryKeyConstraint('id')
     )

@@ -3,6 +3,12 @@ from app.core.config import settings
 from app.api.v1 import auth, users, projects, assets, templates, snapshots, deployments
 from app.db import models
 from fastapi.middleware.cors import CORSMiddleware
+from app.services.queue_handler import QueueHandler
+import asyncio
+from app.core.logging import setup_logging
+
+# Инициализируем логирование
+logger = setup_logging()
 
 def create_application() -> FastAPI:
     """
@@ -47,6 +53,17 @@ def create_application() -> FastAPI:
     return application
 
 app = create_application()
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Starting application")
+    # Запускаем обработчик очереди в фоновом режиме
+    queue_handler = QueueHandler()
+    asyncio.create_task(queue_handler.start())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Shutting down application")
 
 @app.get("/api/health")
 async def health_check():

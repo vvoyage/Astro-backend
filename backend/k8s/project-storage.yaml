@@ -1,0 +1,28 @@
+# PersistentVolume для хранения файлов проектов
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: project-storage-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /data/project-storage
+
+---
+# PersistentVolumeClaim для проектов
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: project-storage-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard 

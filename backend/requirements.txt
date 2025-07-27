@@ -11,3 +11,11 @@ alembic==1.13.1
 openai==1.65.0
 email-validator==2.1.0 
 python-multipart==0.0.9 
+psycopg2-binary==2.9.10
+minio==7.1.14
+aio-pika==8.0.0
+kubernetes==30.1.0
+beautifulsoup4==4.13.3
+bs4==0.0.2
+kubernetes==30.1.0
+loguru==0.7.2
