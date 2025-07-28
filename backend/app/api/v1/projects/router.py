@@ -123,8 +123,7 @@ async def create_project(
             # Возврат информации для предпросмотра
             return ProjectPreview(
                 project_id=db_project.id,
-                path=f"projects/{current_user.id}/000/build/index.html",
-                status="generated"  # Меняем статус, так как сборка может не запуститься
+                path=f"projects/{current_user.id}/000/build/index.html"
             )
 
         except Exception as e:

@@ -38,4 +38,3 @@ class Project(ProjectBase):
 class ProjectPreview(BaseModel):
     project_id: UUID4
     path: str
-    status: str
