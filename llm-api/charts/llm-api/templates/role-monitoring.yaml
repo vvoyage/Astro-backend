@@ -1,0 +1,53 @@
+{{- if .Values.roles.monitoring.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "llm-api.fullname" . }}-{{ .Values.roles.monitoring.name }}
+  labels:
+    {{- include "llm-api.labels" . | nindent 4 }}
+rules:
+{{- if .Values.roles.monitoring.resources.pods }}
+# Права на проверку состояния подов (доступ ко всем подам в namespace)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+{{- end }}
+{{- if .Values.roles.monitoring.resources.deployments }}
+# Права на проверку состояния деплойментов (только деплоймент этого чарта)
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+  resourceNames: ["{{ include "llm-api.fullname" . }}"]
+{{- end }}
+{{- if .Values.roles.monitoring.resources.secrets }}
+# Права на проверку существования секретов
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list"]
+{{- end }}
+{{- if .Values.roles.monitoring.resources.services }}
+# Права на проверку состояния сервисов (только сервис этого чарта)
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+  resourceNames: ["{{ include "llm-api.fullname" . }}"]
+{{- end }}
+{{- if .Values.roles.monitoring.resources.ingresses }}
+# Права на проверку состояния ingress (только ingress этого чарта)
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+  resourceNames: ["{{ include "llm-api.fullname" . }}"]
+{{- end }}
+{{- if .Values.roles.monitoring.resources.hpa }}
+# Права на проверку состояния HPA (только HPA этого чарта)
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch"]
+  resourceNames: ["{{ include "llm-api.fullname" . }}"]
+{{- end }}
+{{- if .Values.roles.monitoring.additionalRules }}
+{{- toYaml .Values.roles.monitoring.additionalRules | nindent 0 }}
+{{- end }}
+{{- end }}
+

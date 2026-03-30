@@ -1,0 +1,85 @@
+# Default values for llm-api
+replicaCount: 1
+
+image:
+  repository: registry.gitlab.com/transcriber-app/llm-api
+  pullPolicy: IfNotPresent
+  # tag обновляется в infra-repo
+  tag: v0.0.1
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10M"
+  hosts:
+    - host: llm-api.veryred.ru
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: llm-api-tls
+      hosts:
+        - llm-api.veryred.ru
+
+# Environment variables configuration
+env:
+  app:
+    LOG_LEVEL: "INFO"
+    LOG_JSON: true
+    LLAMA_MODEL: "llama-3.2-3b-instruct"
+    GPU_ENABLED: false
+    CONTEXT_SIZE: "2048"
+    MAX_TOKENS: "512"
+
+# Llama 3.2 3B модель требует около 4-5 GB RAM
+resources:
+  limits:
+    cpu: 4000m
+    memory: 8Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+# RBAC Roles configuration
+# Роли создаются для будущего использования с OIDC пользователями
+roles:
+  # Роль для чтения логов
+  logs:
+    enabled: true
+    name: "logs-reader"
+    # Дополнительные права для логов (если понадобятся)
+    additionalRules: []
+  
+  # Роль для мониторинга состояния
+  monitoring:
+    enabled: true
+    name: "monitoring-reader"
+    # Дополнительные права для мониторинга (если понадобятся)
+    additionalRules: []
+    # Можно включить/выключить конкретные ресурсы
+    resources:
+      pods: true
+      deployments: true
+      secrets: true
+      services: true
+      ingresses: true
+      hpa: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+

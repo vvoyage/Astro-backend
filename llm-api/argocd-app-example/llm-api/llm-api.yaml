@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: llm-api
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: llm-api
+    app.kubernetes.io/component: backend
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://gitlab.com/transcriber-app/llm-api.git
+      targetRevision: main
+      path: charts/llm-api
+      helm:
+        valueFiles:
+          - $values/envs/dev/apps/1.transcriber/llm-api/values-of-llm-api.yaml
+    - repoURL: https://github.com/StepanLem/k8s-my-postinstall.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # по дефолту background(в этом случае могут остаться висячие ресурсы. Врипнципе неприятно на любом стенде),
+      #   а foreground лучше, ибо точно удалит всё что нужно
+      - PrunePropagationPolicy=foreground
+      # по дефолту false(может сначала удалить старые, а потом уже создать новые).
+      #   true=сначала создай, потом удали. Для прода.
+      - PruneLast=true
+    retry: # тут значения по умолчанию стоят сейчас
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10 # default - 10
+

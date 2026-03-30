@@ -1,0 +1,17 @@
+{{- if .Values.roles.logs.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "llm-api.fullname" . }}-{{ .Values.roles.logs.name }}
+  labels:
+    {{- include "llm-api.labels" . | nindent 4 }}
+rules:
+# Права на чтение логов всех подов в namespace
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+{{- if .Values.roles.logs.additionalRules }}
+{{- toYaml .Values.roles.logs.additionalRules | nindent 0 }}
+{{- end }}
+{{- end }}
+
