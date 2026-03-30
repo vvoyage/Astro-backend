@@ -57,6 +57,11 @@ Thumbs.db
 # Alembic auto-generated (keep versions, ignore __pycache__ inside)
 backend/migrations/versions/__pycache__/
 
+# Runtime artifacts — не трекаем
+backend/logs/
+backend/venv/
+backend/tests/logs/
+
 # Astro build output
 **/dist/
 **/.astro/
