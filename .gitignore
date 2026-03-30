@@ -21,6 +21,7 @@ pip-delete-this-directory.txt
 .coverage
 htmlcov/
 *.log
+/docs
 
 # Node / Frontend
 node_modules/
