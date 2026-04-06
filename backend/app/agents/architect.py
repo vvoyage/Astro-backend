@@ -28,7 +28,7 @@ class ArchitectAgent(BaseAgent):
     {
       "path": "src/layouts/Layout.astro",
       "description": "Базовый layout с head и nav",
-      "content_hint": "HTML5 структура, подключение Tailwind, мета-теги",
+      "content_hint": "HTML5 структура, мета-теги, ОБЯЗАТЕЛЬНО тег <script is:inline src='https://cdn.tailwindcss.com'></script> в <head> (is:inline обязателен для Astro)",
       "dependencies": []
     },
     {
@@ -44,7 +44,8 @@ class ArchitectAgent(BaseAgent):
 - Массив files НИКОГДА не должен быть пустым — минимум 3 файла
 - Всегда включай src/pages/index.astro и src/layouts/Layout.astro
 - Указывай реальные пути в Astro-проекте (src/pages/, src/components/, src/layouts/)
-- content_hint должен описывать конкретное содержимое файла"""
+- content_hint должен описывать конкретное содержимое файла
+- В src/layouts/Layout.astro ОБЯЗАТЕЛЬНО должен быть <script src="https://cdn.tailwindcss.com"></script> в <head> — это единственный способ подключить Tailwind (никаких @apply, никаких CDN-ссылок через <link>)"""
 
     async def run(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """
