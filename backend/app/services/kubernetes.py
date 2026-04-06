@@ -1,3 +1,5 @@
+import hashlib
+
 from kubernetes import client, config
 from app.core.config import settings
 from loguru import logger
@@ -35,8 +37,11 @@ class KubernetesService:
         Returns:
             str: Имя созданного Job
         """
-        job_name = f"build-{user_id}-{project_id}"
-        logger.info("Creating build job: {}", job_name)
+        # K8s labels must be <=63 chars; build-{user_id}-{project_id} is 79 chars.
+        # Use a short deterministic hash instead.
+        name_hash = hashlib.md5(f"{user_id}-{project_id}".encode()).hexdigest()[:16]
+        job_name = f"build-{name_hash}"
+        logger.info("Creating build job: {} (project={}, user={})", job_name, project_id, user_id)
         
         # Сначала проверяем существование старого job
         try:
@@ -87,36 +92,46 @@ class KubernetesService:
                         containers=[
                             client.V1Container(
                                 name="builder",
-                                image="node:18",
+                                image="node:22",
                                 command=["/bin/sh", "-c"],
-                                args=["""
-# Устанавливаем необходимые инструменты
-apt-get update && apt-get install -y wget
+                                args=["""set -e
 
 # Устанавливаем MinIO Client
-wget https://dl.min.io/client/mc/release/linux-amd64/mc
-chmod +x mc
-mv mc /usr/local/bin/
+apt-get update -qq && apt-get install -y -qq wget
+wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc
+chmod +x /usr/local/bin/mc
 
-# Настраиваем MinIO (используем host.docker.internal)
+# Настраиваем MinIO
 mc alias set minio http://host.docker.internal:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
 
-# Создаем рабочую директорию
-mkdir -p /workspace
-cd /workspace
+# Проверяем наличие исходников в MinIO
+echo "=== Source files in MinIO ==="
+mc ls --recursive minio/astro-projects/projects/$USER_ID/$PROJECT_ID/src/
 
-# Создаем новый Astro проект
-npm create astro@latest . --template basics --install --no-git --typescript strict --yes --skip
+# Чистая рабочая директория (важно: workspace должен быть пустым для create-astro)
+WORKDIR=/workspace/$PROJECT_ID
+rm -rf "$WORKDIR" && mkdir -p "$WORKDIR"
+cd "$WORKDIR"
 
-# Копируем файлы из MinIO
-mc cp -r minio/astro-projects/projects/$USER_ID/$PROJECT_ID/src/* ./src/
+# Создаём базовый Astro проект
+npx --yes create-astro@latest . --template basics --no-install --no-git --yes
 
-# Устанавливаем зависимости и собираем проект
+# Копируем AI-сгенерированные файлы поверх шаблона
+mc cp --recursive minio/astro-projects/projects/$USER_ID/$PROJECT_ID/src/ ./src/
+
+echo "=== Final src/ contents ==="
+find src/ -type f | sort
+
+# Устанавливаем зависимости и собираем
 npm install
 npm run build
 
-# Копируем результаты обратно в MinIO
-mc cp -r dist/* minio/astro-projects/projects/$USER_ID/$PROJECT_ID/build/
+echo "=== Build complete, dist/ ==="
+ls -la dist/
+
+# Загружаем результат в MinIO
+mc cp --recursive dist/ minio/astro-projects/projects/$USER_ID/$PROJECT_ID/build/
+echo "=== Upload complete ==="
 """],
                                 env=[
                                     client.V1EnvVar(name="USER_ID", value=user_id),
@@ -192,7 +207,8 @@ mc cp -r dist/* minio/astro-projects/projects/$USER_ID/$PROJECT_ID/build/
             status = "Running"
             if job.status.succeeded:
                 status = "Completed"
-            elif job.status.failed:
+            elif job.status.failed and not job.status.active:
+                # Только если нет активных подов — job окончательно упал
                 status = "Failed"
             
             logger.debug("Job {} status: {}", job_name, status)

@@ -1,6 +1,7 @@
 """A2: CodeGeneratorAgent — спецификация файлов → готовый код каждого файла."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from app.agents.base import BaseAgent
@@ -19,7 +20,14 @@ class CodeGeneratorAgent(BaseAgent):
         """
         input_data: {"file": {"path": str, "description": str}, "project_spec": {...}}
         returns: {"path": str, "content": str}
-
-        TODO: реализовать вызов LLM через self._call_llm()
         """
-        raise NotImplementedError("CodeGeneratorAgent.run() не реализован")
+        file_spec = input_data["file"]
+        project_spec = input_data.get("project_spec", {})
+
+        user_prompt = (
+            f"Файл для генерации: {json.dumps(file_spec, ensure_ascii=False)}\n"
+            f"Контекст проекта: {json.dumps(project_spec, ensure_ascii=False, indent=2)}"
+        )
+
+        content = await self._call_llm(self.SYSTEM_PROMPT, user_prompt)
+        return {"path": file_spec["path"], "content": content}

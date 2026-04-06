@@ -6,8 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.core.security.jwt import create_access_token
+from app.core.security.jwt import _ACCESS_TOKEN_EXPIRE_MINUTES, create_access_token
 from app.core.security.password import (
     get_password_hash,
     validate_password,
@@ -97,7 +96,7 @@ async def login(
     # Создаем access token
     access_token = create_access_token(
         subject=user.email,
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta=timedelta(minutes=_ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     
     return Token(access_token=access_token)

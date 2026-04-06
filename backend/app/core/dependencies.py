@@ -1,76 +1,122 @@
 """Dependency Injection фабрики для FastAPI Depends()."""
 from __future__ import annotations
 
-from typing import Annotated, AsyncGenerator
+from typing import Annotated
+from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
+from redis.asyncio import from_url as redis_from_url
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import async_session_maker
-
-# TODO: from app.core.security import verify_keycloak_token
-# TODO: from app.core.config import settings
+from app.core.config import settings
+from app.core.security.jwt import verify_token
+from app.db.database import get_async_session
+from app.db.models.user import User
 
 _bearer = HTTPBearer(auto_error=False)
+
+
+def _user_claims(user_id: UUID) -> dict:
+    return {
+        "sub": str(user_id),
+        "realm_access": {"roles": ["user"]},
+    }
 
 
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Выдаёт AsyncSession с автоматическим commit/rollback."""
-    async with async_session_maker() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-
-
-DbSession = Annotated[AsyncSession, Depends(get_db)]
+DbSession = Annotated[AsyncSession, Depends(get_async_session)]
 
 
 # ---------------------------------------------------------------------------
 # Redis
 # ---------------------------------------------------------------------------
 
-_redis_pool: Redis | None = None
+_redis_client: Redis | None = None
+
+
+async def init_redis() -> None:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis_from_url(settings.REDIS_URL, decode_responses=True)
+
+
+async def close_redis() -> None:
+    global _redis_client
+    if _redis_client is not None:
+        await _redis_client.aclose()
+        _redis_client = None
 
 
 async def get_redis() -> Redis:
-    """Возвращает singleton Redis-клиент (пул соединений).
-
-    TODO: инициализировать пул в lifespan приложения.
-    """
-    global _redis_pool
-    if _redis_pool is None:
-        raise RuntimeError("Redis pool не инициализирован. Вызовите init_redis() в lifespan.")
-    return _redis_pool
+    """Возвращает singleton async Redis-клиент."""
+    if _redis_client is None:
+        raise RuntimeError("Redis не инициализирован. Вызовите init_redis() при старте приложения.")
+    return _redis_client
 
 
 RedisClient = Annotated[Redis, Depends(get_redis)]
 
 
 # ---------------------------------------------------------------------------
-# Current user (from Keycloak JWT)
+# Current user (JWT или dev-заголовок)
 # ---------------------------------------------------------------------------
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    x_dev_user_id: str | None = Header(default=None, alias="X-Dev-User-Id"),
+    db: AsyncSession = Depends(get_async_session),
 ) -> dict:
-    """Извлекает и валидирует пользователя из Bearer-токена Keycloak.
+    """Пользователь из Bearer JWT (sub = email или UUID) либо в DEBUG без токена — X-Dev-User-Id (UUID существующего User)."""
+    if credentials is not None and credentials.credentials:
+        payload = verify_token(credentials.credentials)
+        sub = payload.get("sub")
+        if not sub:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload",
+            )
+        user: User | None = None
+        try:
+            uid = UUID(str(sub))
+        except ValueError:
+            uid = None
+        if uid is not None:
+            res = await db.execute(select(User).where(User.id == uid))
+            user = res.scalar_one_or_none()
+        if user is None:
+            res = await db.execute(select(User).where(User.email == str(sub)))
+            user = res.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+            )
+        return _user_claims(user.id)
 
-    TODO: реализовать через app.core.security.verify_keycloak_token()
-    """
-    if not credentials:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    # TODO: payload = await verify_keycloak_token(credentials.credentials)
-    # TODO: return payload
-    raise NotImplementedError("get_current_user не реализован — нужна интеграция с Keycloak")
+    if settings.DEBUG and x_dev_user_id:
+        try:
+            uid = UUID(x_dev_user_id.strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="X-Dev-User-Id must be a valid UUID",
+            ) from exc
+        res = await db.execute(select(User).where(User.id == uid))
+        user = res.scalar_one_or_none()
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No user with this id (dev mode)",
+            )
+        return _user_claims(user.id)
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
 
 CurrentUser = Annotated[dict, Depends(get_current_user)]

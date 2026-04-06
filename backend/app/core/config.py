@@ -1,31 +1,28 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 from functools import lru_cache
 
 class Settings(BaseSettings):
     """
     Настройки приложения, читаемые из переменных окружения или .env файла
-    
+
     Attributes:
         PROJECT_NAME: Название проекта
         DEBUG: Режим отладки
         VERSION: Версия API
-        DATABASE_URL: URL подключения к базе данных
-        SECRET_KEY: Секретный ключ для JWT токенов
-        ALGORITHM: Алгоритм для JWT
-        ACCESS_TOKEN_EXPIRE_MINUTES: Время жизни access token
+        DATABASE_URL: URL подключения к базе данных (async)
+        SYNC_DATABASE_URL: URL подключения к базе данных (sync, для миграций)
+        REDIS_URL: URL для Redis (Celery backend + кэш статусов)
     """
     PROJECT_NAME: str = "Astro Site Generator"
     DEBUG: bool = False
     VERSION: str = "1.0.0"
-    
-    DATABASE_URL: str  # асинхронное подключение для приложения
-    SYNC_DATABASE_URL: str  # синхронное подключение для миграций
-    SECRET_KEY: str
-    ALGORITHM: str 
-    ACCESS_TOKEN_EXPIRE_MINUTES: int 
+
+    DATABASE_URL: str  # async connection for app
+    SYNC_DATABASE_URL: str  # sync connection for migrations
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     OPENAI_API_KEY: str
+    OPENAI_BASE_URL: str | None = None  # напр. https://api.proxyapi.ru/openai/v1
 
     # MinIO settings
     MINIO_ENDPOINT: str 

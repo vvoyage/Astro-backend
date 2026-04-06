@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from app.core.config import settings
 from app.api.v1 import auth, users, projects, assets, templates, snapshots, deployments
+from app.api.v1.generation.router import router as generation_router
+from app.core.dependencies import close_redis, init_redis
 from app.db import models
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.queue_handler import QueueHandler
@@ -49,6 +51,7 @@ def create_application() -> FastAPI:
     application.include_router(templates.router, prefix=api_v1_prefix)
     application.include_router(snapshots.router, prefix=api_v1_prefix)
     application.include_router(deployments.router, prefix=api_v1_prefix)
+    application.include_router(generation_router, prefix=api_v1_prefix)
 
     return application
 
@@ -57,6 +60,7 @@ app = create_application()
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting application")
+    await init_redis()
     # Запускаем обработчик очереди в фоновом режиме
     queue_handler = QueueHandler()
     asyncio.create_task(queue_handler.start())
@@ -64,6 +68,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutting down application")
+    await close_redis()
 
 @app.get("/api/health")
 async def health_check():
