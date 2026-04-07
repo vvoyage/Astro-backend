@@ -1,20 +1,25 @@
-from pydantic import BaseModel, UUID4
+from __future__ import annotations
+
 from datetime import datetime
+from uuid import UUID
 
-class SnapshotBase(BaseModel):
-    project_id: UUID4  # связь с проектом
-    version_id: str  # идентификатор версии
-    s3_path: str  # путь к снэпшоту в S3
+from pydantic import BaseModel
 
-class SnapshotCreate(SnapshotBase):
-    pass
 
-class SnapshotUpdate(SnapshotBase):
-    pass
+class SnapshotResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    version: int
+    minio_path: str
+    description: str | None
+    created_at: datetime
 
-class Snapshot(SnapshotBase):
-    id: UUID4  # уникальный идентификатор снэпшота
-    created_at: datetime  # время создания
+    model_config = {"from_attributes": True}
 
-    class Config:
-        from_attributes = True
+
+class RestoreResponse(BaseModel):
+    snapshot_id: UUID
+    project_id: UUID
+    file_path: str
+    version: int
+    status: str
