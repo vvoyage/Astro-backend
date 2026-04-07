@@ -11,8 +11,7 @@ from app.db.models.project import Project as ProjectModel
 from app.db.models.template import Template as TemplateModel
 from app.schemas.project import ProjectCreate, Project, ProjectPreview
 from app.services.storage import StorageService
-from app.services.kubernetes import KubernetesService  
-from app.services.project_generator import ProjectGenerationService 
+from app.services.kubernetes import KubernetesService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -87,51 +86,32 @@ async def create_project(
 
         # Инициализация сервисов
         storage = StorageService()
-        project_generator = ProjectGenerationService()
         kubernetes = KubernetesService()
-        
-        try:
-            # Очистка предыдущего временного проекта
-            await storage.cleanup_default_project(str(current_user.id))
 
-            # Создание структуры в MinIO
+        try:
+            await storage.cleanup_default_project(str(current_user.id))
             await storage.create_project_structure(
                 user_id=str(current_user.id),
                 project_id="000"
             )
 
-            # Запускаем генерацию проекта
-            generation_success = await project_generator.generate_project(
-                user_id=str(current_user.id),
-                project_id="000",
-                prompt=prompt
-            )
-            
-            if not generation_success:
-                raise Exception("Failed to generate project")
-
             try:
-                # Запускаем сборку в Kubernetes
                 job_name = await kubernetes.create_build_job(
                     user_id=str(current_user.id),
                     project_id="000"
                 )
             except Exception as k8s_error:
                 print(f"Warning: Failed to create Kubernetes job: {str(k8s_error)}")
-                # Не прерываем выполнение, так как проект уже сгенерирован
 
-            # Возврат информации для предпросмотра
             return ProjectPreview(
                 project_id=db_project.id,
                 path=f"projects/{current_user.id}/000/build/index.html"
             )
 
         except Exception as e:
-            # Если что-то пошло не так, удаляем проект из БД и очищаем MinIO
             await session.delete(db_project)
             await session.commit()
             await storage.cleanup_default_project(str(current_user.id))
-            
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error initializing project infrastructure: {str(e)}"

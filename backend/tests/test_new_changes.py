@@ -300,7 +300,7 @@ _USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
 @pytest.mark.asyncio
 class TestGenerationPipeline:
-    async def _run(self, *, prompt="кофейня", model="gpt-4o-mini",
+    async def _run(self, *, prompt="кофейня", model="gpt-5.4-mini",
                    optimizer_spec=None, architect_files=None, gen_results=None):
         from app.workers.tasks.generation import _pipeline
 

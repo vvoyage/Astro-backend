@@ -14,7 +14,7 @@ class EditElementRequest(BaseModel):
     project_id: str
     element: ElementInfo
     instruction: str = Field(..., min_length=1, max_length=2000)
-    ai_model: str = Field(default="gpt-4o-mini")
+    ai_model: str = Field(default="gpt-5.4-mini")
 
 
 class EditElementResponse(BaseModel):

@@ -5,7 +5,6 @@ from app.api.v1.generation.router import router as generation_router
 from app.core.dependencies import close_redis, init_redis
 from app.db import models
 from fastapi.middleware.cors import CORSMiddleware
-from app.services.queue_handler import QueueHandler
 import asyncio
 from app.core.logging import setup_logging
 
@@ -61,9 +60,6 @@ app = create_application()
 async def startup_event():
     logger.info("Starting application")
     await init_redis()
-    # Запускаем обработчик очереди в фоновом режиме
-    queue_handler = QueueHandler()
-    asyncio.create_task(queue_handler.start())
 
 @app.on_event("shutdown")
 async def shutdown_event():
