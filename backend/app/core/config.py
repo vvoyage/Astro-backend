@@ -2,17 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 class Settings(BaseSettings):
-    """
-    Настройки приложения, читаемые из переменных окружения или .env файла
-
-    Attributes:
-        PROJECT_NAME: Название проекта
-        DEBUG: Режим отладки
-        VERSION: Версия API
-        DATABASE_URL: URL подключения к базе данных (async)
-        SYNC_DATABASE_URL: URL подключения к базе данных (sync, для миграций)
-        REDIS_URL: URL для Redis (Celery backend + кэш статусов)
-    """
+    """Все настройки берутся из .env файла."""
     PROJECT_NAME: str = "Astro Site Generator"
     DEBUG: bool = False
     VERSION: str = "1.0.0"
@@ -42,7 +32,16 @@ class Settings(BaseSettings):
     NODE_VERSION: str 
     NPM_REGISTRY: str 
 
-    # Конфигурация в Pydantic 2.x
+    # Keycloak settings
+    KEYCLOAK_URL: str = "http://localhost:8080"
+    KEYCLOAK_REALM: str = "astro-service"
+    KEYCLOAK_CLIENT_ID: str = "astro-backend"
+    # Если False — audience ("aud") в JWT не проверяется.
+    # astro-frontend имеет oidc-audience-mapper → "astro-backend" в aud, поэтому True.
+    KEYCLOAK_VERIFY_AUDIENCE: bool = True
+    # Client secret для service account (client_credentials) — создание пользователей через Admin API
+    KEYCLOAK_CLIENT_SECRET: str
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding='utf-8',
@@ -52,12 +51,6 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings() -> Settings:
-    """
-    Создает синглтон настроек приложения
-    
-    Returns:
-        Settings: Объект настроек
-    """
     return Settings()
 
 settings = get_settings() 

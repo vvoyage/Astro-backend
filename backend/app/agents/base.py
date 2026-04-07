@@ -1,8 +1,4 @@
-"""BaseAgent: общая логика для всех AI-агентов.
-
-Содержит: формирование промпта, вызов LLM (AsyncOpenAI),
-парсинг JSON из ответа, retry при ошибках, логирование.
-"""
+"""Базовый класс для всех AI-агентов: вызов LLM, парсинг JSON из ответа, retry."""
 from __future__ import annotations
 
 import json
@@ -20,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseAgent(ABC):
-    """Базовый класс для AI-агентов A0, A1, A2."""
+    """Базовый класс для агентов A0, A1, A2."""
 
     def __init__(self, model: str = "gpt-5.4-mini", max_retries: int = 3) -> None:
         self.model = model
@@ -32,12 +28,11 @@ class BaseAgent(ABC):
 
     @abstractmethod
     async def run(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """Запустить агента и вернуть результат."""
         ...
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10), reraise=True)
     async def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        """Вызов LLM с exponential backoff retry (x3)."""
+        """Вызов LLM с exponential backoff (3 попытки)."""
         logger.debug("[%s] Sending to LLM (model=%s):\n--- SYSTEM ---\n%s\n--- USER ---\n%s",
                      self.__class__.__name__, self.model, system_prompt.strip(), user_prompt[:500])
         response = await self.client.chat.completions.create(
@@ -56,13 +51,13 @@ class BaseAgent(ABC):
 
     @staticmethod
     def _extract_json(text: str) -> dict[str, Any]:
-        """Извлечь JSON из ответа LLM (обрабатывает markdown-обёртку и лишний текст)."""
-        # 1. Markdown code block
+        """Вытаскивает JSON из ответа LLM — работает и с markdown-блоком, и с голым JSON."""
+        # пробуем сначала markdown ```json ... ```
         match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
         if match:
             text = match.group(1)
         else:
-            # 2. Bare JSON — strip everything before first { or [
+            # иначе ищем первый { или [ и берём до последнего соответствующего закрывающего
             obj_start = text.find("{")
             arr_start = text.find("[")
             if obj_start == -1 and arr_start == -1:

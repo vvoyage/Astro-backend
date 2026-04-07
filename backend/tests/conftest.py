@@ -88,6 +88,7 @@ _TEST_ENV = {
     "KUBERNETES_SERVICE_ACCOUNT": "default",
     "NODE_VERSION": "20",
     "NPM_REGISTRY": "https://registry.npmjs.org",
+    "KEYCLOAK_CLIENT_SECRET": "test-secret",
 }
 
 for key, value in _TEST_ENV.items():

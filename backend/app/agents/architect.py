@@ -1,4 +1,4 @@
-"""A1: ArchitectAgent — подзадачи из A0 → JSON-спецификация файловой структуры проекта."""
+"""A1 ArchitectAgent: принимает структурированную спецификацию от A0, возвращает список файлов проекта."""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class ArchitectAgent(BaseAgent):
-    """A1: принимает подзадачи от A0, возвращает полную спецификацию Astro-проекта."""
+    """A1: по спецификации от A0 строит список файлов Astro-проекта с их описаниями."""
 
     SYSTEM_PROMPT = """Ты — архитектор Astro-проектов.
 По заданным подзадачам создай полную спецификацию файловой структуры проекта.
@@ -48,10 +48,7 @@ class ArchitectAgent(BaseAgent):
 - В src/layouts/Layout.astro ОБЯЗАТЕЛЬНО должен быть <script src="https://cdn.tailwindcss.com"></script> в <head> — это единственный способ подключить Tailwind (никаких @apply, никаких CDN-ссылок через <link>)"""
 
     async def run(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """
-        input_data: результат OptimizerAgent
-        returns: {"files": [{"path": str, "description": str, "content_hint": str, "dependencies": [...]}]}
-        """
+        """input_data — результат OptimizerAgent. Возвращает {"files": [...]}."""
         user_prompt = f"Спецификация проекта:\n{json.dumps(input_data, ensure_ascii=False, indent=2)}"
         raw = await self._call_llm(self.SYSTEM_PROMPT, user_prompt)
         result = self._extract_json(raw)

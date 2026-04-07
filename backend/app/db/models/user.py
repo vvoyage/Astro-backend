@@ -8,15 +8,15 @@ from sqlalchemy.sql import func
 from app.db.database import Base
 
 class User(Base):
-    """
-    Модель пользователя в базе данных
-    """
     __tablename__ = "users"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # у Keycloak-пользователей пароль хранится в Keycloak, поэтому здесь NULL
+    hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     full_name: Mapped[Optional[str]] = mapped_column(String(100))
+    # sub из JWT — по нему находим пользователя при каждом запросе
+    keycloak_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), 

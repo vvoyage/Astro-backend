@@ -13,14 +13,8 @@ logger = logger.bind(context="minio")
 
 class StorageService:
     """
-    Сервис для работы с MinIO хранилищем.
-    Управляет тремя бакетами:
-    - astro-projects: файлы проектов пользователей
-    - astro-templates: системные шаблоны проекта
-    - astro-assets: используемые ассеты
-
-    Все публичные async методы оборачивают синхронный minio-клиент
-    через asyncio.to_thread() чтобы не блокировать event loop.
+    Работа с MinIO: три бакета — проекты, шаблоны, ассеты.
+    Синхронный клиент minio оборачивается в asyncio.to_thread(), чтобы не блокировать event loop.
     """
 
     BUCKETS = {
@@ -38,10 +32,6 @@ class StorageService:
             secure=settings.MINIO_SECURE,
         )
         self._initialize_buckets()
-
-    # ------------------------------------------------------------------
-    # Sync helpers (called via asyncio.to_thread)
-    # ------------------------------------------------------------------
 
     def _sync_initialize_buckets(self) -> None:
         for bucket_name in self.BUCKETS.values():
@@ -93,16 +83,8 @@ class StorageService:
             response.close()
             response.release_conn()
 
-    # ------------------------------------------------------------------
-    # Initialization (sync — called in __init__ before any async context)
-    # ------------------------------------------------------------------
-
     def _initialize_buckets(self) -> None:
         self._sync_initialize_buckets()
-
-    # ------------------------------------------------------------------
-    # Public async API
-    # ------------------------------------------------------------------
 
     async def create_project_structure(self, user_id: str, project_id: str = "000") -> None:
         base_path = f"projects/{user_id}/{project_id}"
@@ -138,14 +120,7 @@ class StorageService:
             raise Exception(f"Error saving file to MinIO: {str(e)}")
 
     async def save_source_files(self, user_id: str, project_id: str, files: dict[str, str]) -> None:
-        """
-        Сохраняет сгенерированные исходники в MinIO.
-
-        Args:
-            user_id: ID пользователя
-            project_id: ID проекта
-            files: словарь {относительный_путь: содержимое_файла}
-        """
+        """Сохраняет сгенерированные файлы в MinIO параллельно. files — {путь: контент}."""
         tasks = [
             self.save_file(
                 "projects",

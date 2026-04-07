@@ -1,38 +1,46 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from app.core.config import settings
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.v1 import auth, users, projects, assets, templates, snapshots, deployments
 from app.api.v1.generation.router import router as generation_router
+from app.api.v1.editor.router import router as editor_router
+from app.core.config import settings
 from app.core.dependencies import close_redis, init_redis
-from app.db import models
-from fastapi.middleware.cors import CORSMiddleware
-import asyncio
 from app.core.logging import setup_logging
+from app.db import models
 
-# Инициализируем логирование
 logger = setup_logging()
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting application")
+    await init_redis()
+    yield
+    logger.info("Shutting down application")
+    await close_redis()
+
+
 def create_application() -> FastAPI:
-    """
-    Фабричная функция для создания экземпляра FastAPI
-    
-    Returns:
-        FastAPI: Настроенное приложение FastAPI
-    """
+    """Создаёт и настраивает экземпляр FastAPI."""
     application = FastAPI(
         title=settings.PROJECT_NAME,
         debug=settings.DEBUG,
         version=settings.VERSION,
         docs_url="/api/docs",
         redoc_url="/api/redoc",
-        openapi_url="/api/openapi.json"
+        openapi_url="/api/openapi.json",
+        lifespan=lifespan,
     )
     
-    # Настройка безопасности для Swagger UI
+    # PKCE для Swagger UI (нужно для Keycloak)
     application.swagger_ui_init_oauth = {
         "usePkceWithAuthorizationCodeGrant": True
     }
     
-    # Добавляем схему безопасности
+    # CORS — на prod надо будет сузить список origins
     application.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -41,7 +49,6 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # Подключаем все роутеры
     api_v1_prefix = "/api/v1"
     application.include_router(auth.router, prefix=api_v1_prefix)
     application.include_router(users.router, prefix=api_v1_prefix)
@@ -51,24 +58,13 @@ def create_application() -> FastAPI:
     application.include_router(snapshots.router, prefix=api_v1_prefix)
     application.include_router(deployments.router, prefix=api_v1_prefix)
     application.include_router(generation_router, prefix=api_v1_prefix)
+    application.include_router(editor_router, prefix=api_v1_prefix)
 
     return application
 
 app = create_application()
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Starting application")
-    await init_redis()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Shutting down application")
-    await close_redis()
-
 @app.get("/api/health")
 async def health_check():
-    """
-    Эндпоинт для проверки работоспособности API
-    """
-    return {"status": "healthy"} 
+    """Просто проверка что апи живой."""
+    return {"status": "healthy"}

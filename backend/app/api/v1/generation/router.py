@@ -28,7 +28,7 @@ async def start_generation(
     user: CurrentUser,
 ) -> dict:
     """Создаёт Project, пишет статус queued в Redis, запускает Celery pipeline."""
-    user_id = UUID(user["sub"])
+    user_id = UUID(user["internal_user_id"])
     name = (body.prompt[:60].strip() or "generation").replace("\n", " ")
 
     project = await project_repo.create(
@@ -71,7 +71,7 @@ async def stream_generation_status(
       data: {"stage": "optimizer", "progress": 15}
     Стрим закрывается при stage=done|error|failed.
     """
-    user_id = UUID(user["sub"])
+    user_id = UUID(user["internal_user_id"])
     project = await project_repo.get_by_id(db, project_id)
     if project is None or project.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")

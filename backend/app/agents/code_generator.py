@@ -1,4 +1,4 @@
-"""A2: CodeGeneratorAgent — спецификация файлов → готовый код каждого файла."""
+"""A2 CodeGeneratorAgent: по спецификации файла от A1 генерирует его исходный код."""
 from __future__ import annotations
 
 import json
@@ -8,7 +8,7 @@ from app.agents.base import BaseAgent
 
 
 class CodeGeneratorAgent(BaseAgent):
-    """A2: генерирует код для каждого файла по спецификации от A1."""
+    """A2: генерирует код файла по спецификации от ArchitectAgent."""
 
     SYSTEM_PROMPT = """Ты — разработчик Astro-сайтов.
 Напиши код файла по заданной спецификации. Используй Astro, TypeScript, Tailwind CSS.
@@ -21,10 +21,7 @@ class CodeGeneratorAgent(BaseAgent):
 - Никаких <link rel="stylesheet" href="...tailwind..."> — только тег <script is:inline> выше"""
 
     async def run(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """
-        input_data: {"file": {"path": str, "description": str}, "project_spec": {...}}
-        returns: {"path": str, "content": str}
-        """
+        """input_data: {"file": {...}, "project_spec": {...}}. Возвращает {"path": str, "content": str}."""
         file_spec = input_data["file"]
         project_spec = input_data.get("project_spec", {})
 
