@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.core.dependencies import CurrentUser, DbSession, RedisClient
+from app.repositories import snapshot as snapshot_repo
 from app.schemas.editor import EditElementRequest, EditElementResponse, UpdateFileRequest
+from app.services.storage import StorageService
 from app.workers.tasks.edit import edit_element as edit_element_task
 
 router = APIRouter(prefix="/editor", tags=["editor"])
@@ -57,11 +60,14 @@ async def get_file_code(
     file_path: str,
     user: CurrentUser,
 ) -> dict:
-    """Вернуть исходный код файла проекта из MinIO.
-
-    TODO: загрузить через services.storage
-    """
-    raise NotImplementedError
+    """Вернуть исходный код файла проекта из MinIO."""
+    user_id: str = user["internal_user_id"]
+    storage = StorageService()
+    minio_path = f"projects/{user_id}/{project_id}/{file_path.lstrip('/')}"
+    raw = await storage.get_file("projects", minio_path)
+    if raw is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+    return {"project_id": project_id, "file_path": file_path, "content": raw.decode("utf-8")}
 
 
 @router.put("/file")
@@ -70,8 +76,28 @@ async def update_file_code(
     db: DbSession,
     user: CurrentUser,
 ) -> dict:
-    """Ручное обновление файла (без AI), создаёт снапшот.
+    """Ручное обновление файла (без AI), создаёт снапшот текущей версии перед сохранением."""
+    user_id: str = user["internal_user_id"]
+    storage = StorageService()
+    minio_path = f"projects/{user_id}/{body.project_id}/{body.file_path.lstrip('/')}"
 
-    TODO: сохранить в MinIO + создать снапшот
-    """
-    raise NotImplementedError
+    current = await storage.get_file("projects", minio_path)
+    if current is not None:
+        latest_version = await snapshot_repo.get_latest_version(db, UUID(body.project_id))
+        new_version = latest_version + 1
+        snapshot_path = (
+            f"projects/{user_id}/{body.project_id}/snapshots/v{new_version}"
+            f"/{body.file_path.lstrip('/')}"
+        )
+        await storage.save_file("projects", snapshot_path, current)
+        await snapshot_repo.create(
+            db,
+            project_id=UUID(body.project_id),
+            version=new_version,
+            minio_path=snapshot_path,
+            description="Manual file update",
+        )
+        await db.commit()
+
+    await storage.save_file("projects", minio_path, body.content.encode("utf-8"))
+    return {"project_id": body.project_id, "file_path": body.file_path, "status": "saved"}

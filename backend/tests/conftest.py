@@ -78,6 +78,56 @@ _celery_mod.Celery = _FakeCelery
 _stub("asyncpg")
 _stub("aio_pika")
 
+# --- fastapi ---
+
+class _FakeHTTPException(Exception):
+    def __init__(self, status_code: int, detail: str = ""):
+        self.status_code = status_code
+        self.detail = detail
+
+class _FakeStatus:
+    HTTP_200_OK = 200
+    HTTP_201_CREATED = 201
+    HTTP_202_ACCEPTED = 202
+    HTTP_204_NO_CONTENT = 204
+    HTTP_400_BAD_REQUEST = 400
+    HTTP_401_UNAUTHORIZED = 401
+    HTTP_403_FORBIDDEN = 403
+    HTTP_404_NOT_FOUND = 404
+    HTTP_409_CONFLICT = 409
+    HTTP_422_UNPROCESSABLE_ENTITY = 422
+    HTTP_500_INTERNAL_SERVER_ERROR = 500
+
+class _FakeAPIRouter:
+    """APIRouter-заглушка: декораторы @router.get/post/put/delete возвращают оригинальную функцию."""
+    def __init__(self, *args, **kwargs):
+        self.prefix = kwargs.get("prefix", "")
+        self.tags = kwargs.get("tags", [])
+
+    def _noop_decorator(self, *args, **kwargs):
+        def _wrap(fn):
+            return fn
+        return _wrap
+
+    get = post = put = delete = patch = options = head = _noop_decorator
+
+_fastapi = _stub("fastapi")
+_fastapi.HTTPException = _FakeHTTPException
+_fastapi.status = _FakeStatus
+_fastapi.APIRouter = _FakeAPIRouter
+_fastapi.Depends = lambda *a, **kw: None   
+_fastapi.Request = MagicMock
+_fastapi.Response = MagicMock
+
+_fastapi_security = _stub("fastapi.security")
+_fastapi_security.HTTPBearer = MagicMock
+_fastapi_security.HTTPAuthorizationCredentials = MagicMock
+
+# --- app.core.security.keycloak ---
+# Нужен для загрузки app.core.dependencies (verify_keycloak_token).
+_stub("app.core.security")
+_stub("app.core.security.keycloak")
+
 # ---------------------------------------------------------------------------
 # Минимальные env vars, чтобы Pydantic Settings не падал при импорте
 # ---------------------------------------------------------------------------
