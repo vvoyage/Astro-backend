@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from redis.asyncio import Redis
 from redis.asyncio import from_url as redis_from_url
@@ -15,7 +16,7 @@ from app.core.security.keycloak import verify_keycloak_token
 from app.db.database import get_async_session
 from app.db.models.user import User
 
-_bearer = HTTPBearer(auto_error=True)
+_bearer = HTTPBearer(auto_error=False)
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +61,8 @@ RedisClient = Annotated[Redis, Depends(get_redis)]
 # ---------------------------------------------------------------------------
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: AsyncSession = Depends(get_async_session),
     redis: Redis = Depends(get_redis),
 ) -> dict:
@@ -68,7 +70,36 @@ async def get_current_user(
 
     Ищет пользователя в БД по keycloak_id (= поле sub из JWT).
     Если пользователь ещё не синхронизирован — 401, нужно сначала вызвать POST /auth/sync.
+
+    Dev bypass: когда DEBUG=True и передан заголовок X-Dev-User-Id (внутренний UUID),
+    JWT-проверка пропускается — пользователь ищется напрямую по id в БД.
     """
+    # --- Dev bypass (только при DEBUG=True) ---
+    if settings.DEBUG:
+        dev_user_id = request.headers.get("X-Dev-User-Id")
+        if dev_user_id:
+            try:
+                uid = UUID(dev_user_id)
+            except ValueError:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                    detail="Invalid X-Dev-User-Id format")
+            res = await db.execute(select(User).where(User.id == uid))
+            user = res.scalar_one_or_none()
+            if user is None:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                    detail="Dev user not found")
+            return {
+                "sub": str(user.keycloak_id or user.id),
+                "internal_user_id": str(user.id),
+                "_db_user": user,
+            }
+
+    # --- Prod path: Keycloak Bearer JWT ---
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authenticated",
+        )
     payload = await verify_keycloak_token(credentials.credentials, redis)
 
     keycloak_id: str | None = payload.get("sub")
@@ -86,8 +117,6 @@ async def get_current_user(
             detail="User not synced. Call POST /api/v1/auth/sync first.",
         )
 
-    # Добавляем наш внутренний UUID и объект пользователя в payload,
-    # чтобы downstream-зависимости не делали лишний запрос в БД
     payload["internal_user_id"] = str(user.id)
     payload["_db_user"] = user
     return payload

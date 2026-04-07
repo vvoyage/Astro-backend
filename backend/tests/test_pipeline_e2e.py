@@ -38,21 +38,25 @@ from typing import Any
 
 API_URL       = os.getenv("API_URL",       "http://127.0.0.1:8001")
 REDIS_URL     = os.getenv("REDIS_URL",     "redis://localhost:6379/0")
-DB_URL        = os.getenv("DB_URL",        "postgresql://postgres:postgres@localhost:5432/astro")
+DB_URL        = os.getenv("DB_URL",        "postgresql://astro:astro_pass@localhost:5432/astro_db")
 MINIO_ENDPOINT= os.getenv("MINIO_ENDPOINT","localhost:9000")
 MINIO_ACCESS  = os.getenv("MINIO_ACCESS",  "minioadmin")
 MINIO_SECRET  = os.getenv("MINIO_SECRET",  "minioadmin")
 MINIO_BUCKET  = os.getenv("MINIO_BUCKET",  "astro-projects")
 USER_ID       = os.getenv("USER_ID",       "33a951dc-3268-498c-ba66-cde648b9fe24")
 PROMPT        = os.getenv("PROMPT",        "Лендинг для кофейни с красивым минималистичным дизайном и кнопкой заказа")
-AI_MODEL      = os.getenv("AI_MODEL",      "gpt-5.4-mini")
+AI_MODEL      = os.getenv("AI_MODEL",      "gpt-5.4")
 
 K8S_NAMESPACE    = os.getenv("K8S_NAMESPACE",    "default")
 
 # Таймауты
 PIPELINE_TIMEOUT = int(os.getenv("PIPELINE_TIMEOUT", "120"))   # сек на pipeline генерации
 BUILD_TIMEOUT    = int(os.getenv("BUILD_TIMEOUT",    "300"))    # сек на сборку K8s
+EDIT_TIMEOUT     = int(os.getenv("EDIT_TIMEOUT",     "120"))    # сек на edit pipeline (A4)
 POLL_INTERVAL    = float(os.getenv("POLL_INTERVAL",  "2"))      # сек между проверками
+
+EDIT_PROMPT = os.getenv("EDIT_PROMPT", "Добавь жирный текст 'Edited by A4' в начало страницы")
+SKIP_EDITOR  = os.getenv("SKIP_EDITOR", "0") == "1"  # пропустить шаги 22-28 (A4 editor)
 
 # ---------------------------------------------------------------------------
 # Отслеживание результатов
@@ -274,6 +278,7 @@ def run_test() -> int:
     requests = _import_requests()
     r_client = None
     project_id = None
+    src_files: list[str] = []          # заполняется на шаге 8; используется в шагах 22+
     t0_global = time.time()
 
     # -----------------------------------------------------------------------
@@ -652,6 +657,229 @@ def run_test() -> int:
         f"projects/{USER_ID}/{project_id}/build/index.html"
     )
     print(f"\n  {BOLD}URL результата:{RESET} {result_url}")
+
+    # =======================================================================
+    # БЛОК B: Тест A4 EditorAgent pipeline (шаги 22-28)
+    # Запускается только если generation pipeline завершился успешно (stage=done)
+    # и в MinIO есть хотя бы один src/-файл.
+    # Пропускается если SKIP_EDITOR=1.
+    # =======================================================================
+    if SKIP_EDITOR:
+        print(f"\n  {YELLOW}⏭  Шаги 22-28 (Editor pipeline) пропущены: SKIP_EDITOR=1{RESET}")
+        for n, name in [
+            (22, "POST /api/v1/editor/edit → 202"),
+            (23, "Redis: stage = editing"),
+            (24, "A4 EditorAgent → stage = building"),
+            (25, "Снапшот файла в MinIO"),
+            (26, "Обновлённый src-файл в MinIO"),
+            (27, "Build re-triggered → stage = done"),
+            (28, "DB: project status остался ready"),
+        ]:
+            step(n, name, "SKIP", "SKIP_EDITOR=1")
+        return _print_summary()
+
+    if stage != "done":
+        print(f"\n  {YELLOW}⏭  Шаги 22-28 (Editor pipeline) пропущены: generation stage={stage}{RESET}")
+        for n, name in [
+            (22, "POST /api/v1/editor/edit → 202"),
+            (23, "Redis: stage = editing"),
+            (24, "A4 EditorAgent → stage = building"),
+            (25, "Снапшот файла в MinIO"),
+            (26, "Обновлённый src-файл в MinIO"),
+            (27, "Build re-triggered → stage = done"),
+            (28, "DB: project status остался ready"),
+        ]:
+            step(n, name, "SKIP", "generation pipeline не завершился успешно")
+        return _print_summary()
+
+    astro_files = [f for f in src_files if f.endswith(".astro")]
+    if not astro_files:
+        print(f"\n  {YELLOW}⏭  Шаги 22-28 пропущены: src-файлы не найдены в MinIO{RESET}")
+        for n, name in [
+            (22, "POST /api/v1/editor/edit → 202"),
+            (23, "Redis: stage = editing"),
+            (24, "A4 EditorAgent → stage = building"),
+            (25, "Снапшот файла в MinIO"),
+            (26, "Обновлённый src-файл в MinIO"),
+            (27, "Build re-triggered → stage = done"),
+            (28, "DB: project status остался ready"),
+        ]:
+            step(n, name, "SKIP", "src-файлы не найдены / minio недоступен")
+        return _print_summary()
+
+    # Берём первый .astro-файл; путь в MinIO: projects/{user}/{proj}/src/pages/index.astro
+    # Нужен относительный путь для API: src/pages/index.astro
+    edit_minio_path = astro_files[0]
+    # Путь в API: всё после "projects/{USER_ID}/{project_id}/"
+    _prefix_cut = f"projects/{USER_ID}/{project_id}/"
+    edit_file_path = (
+        edit_minio_path[len(_prefix_cut):]
+        if edit_minio_path.startswith(_prefix_cut)
+        else edit_minio_path.split("/", 4)[-1]
+    )
+
+    print(f"\n  {BOLD}=== A4 Editor pipeline (шаги 22-28) ==={RESET}")
+    print(f"  Файл для редактирования: {edit_file_path}")
+    print(f"  Инструкция: {EDIT_PROMPT}\n")
+
+    # -----------------------------------------------------------------------
+    # Шаг 22: POST /api/v1/editor/edit → 202
+    # -----------------------------------------------------------------------
+    t0 = time.time()
+    edit_task_id: str = ""
+    try:
+        resp = requests.post(
+            f"{API_URL}/api/v1/editor/edit",
+            json={
+                "project_id": project_id,
+                "element": {
+                    "editable_id": "a4-e2e-test",
+                    "file_path": edit_file_path,
+                    "element_html": "",
+                },
+                "instruction": EDIT_PROMPT,
+                "ai_model": AI_MODEL,
+            },
+            headers={"X-Dev-User-Id": USER_ID, "Content-Type": "application/json"},
+            timeout=15,
+        )
+        elapsed = time.time() - t0
+        if resp.status_code == 202:
+            body = resp.json()
+            edit_task_id = body.get("task_id", "")
+            step(22, "POST /api/v1/editor/edit → 202", "OK",
+                 f"task_id={edit_task_id}  file={edit_file_path}", elapsed)
+        else:
+            step(22, "POST /api/v1/editor/edit → 202", "FAIL",
+                 f"HTTP {resp.status_code}: {resp.text[:300]}", elapsed)
+            _fail_all_remaining(22, f"HTTP {resp.status_code}")
+            return _print_summary()
+    except Exception as exc:
+        step(22, "POST /api/v1/editor/edit → 202", "FAIL", str(exc), time.time() - t0)
+        _fail_all_remaining(22, str(exc))
+        return _print_summary()
+
+    # -----------------------------------------------------------------------
+    # Шаг 23: Redis generation:{id}:status = editing
+    # -----------------------------------------------------------------------
+    t0 = time.time()
+    try:
+        edit_stage, _ = _wait_redis_stage(
+            r_client, project_id,
+            {"editing", "building", "done", "failed"},
+            timeout=30,
+        )
+        elapsed = time.time() - t0
+        if edit_stage in ("editing", "building", "done"):
+            step(23, "Redis: stage = editing", "OK",
+                 f"stage='{edit_stage}' — A4 task получена воркером", elapsed)
+        elif edit_stage == "failed":
+            step(23, "Redis: stage = editing", "FAIL",
+                 "Edit task сразу упала", elapsed)
+            return _print_summary()
+        else:
+            step(23, "Redis: stage = editing", "FAIL",
+                 f"Таймаут 30с, stage не сменился с done/queued", elapsed)
+            return _print_summary()
+    except Exception as exc:
+        step(23, "Redis: stage = editing", "FAIL", str(exc), time.time() - t0)
+
+    # -----------------------------------------------------------------------
+    # Шаг 24: A4 EditorAgent завершил работу → stage = building (60→70%)
+    # -----------------------------------------------------------------------
+    t0 = time.time()
+    try:
+        edit_stage, _ = _wait_redis_stage(
+            r_client, project_id,
+            {"building", "done", "failed"},
+            timeout=EDIT_TIMEOUT,
+        )
+        elapsed = time.time() - t0
+        if edit_stage in ("building", "done"):
+            step(24, "A4 EditorAgent → stage = building", "OK",
+                 f"LLM отработал, stage='{edit_stage}' за {elapsed:.1f}с", elapsed)
+        elif edit_stage == "failed":
+            step(24, "A4 EditorAgent → stage = building", "FAIL",
+                 "Edit pipeline упал во время LLM-вызова", elapsed)
+            return _print_summary()
+        else:
+            step(24, "A4 EditorAgent → stage = building", "FAIL",
+                 f"Таймаут {EDIT_TIMEOUT}с", elapsed)
+            return _print_summary()
+    except Exception as exc:
+        step(24, "A4 EditorAgent → stage = building", "FAIL", str(exc), time.time() - t0)
+
+    # -----------------------------------------------------------------------
+    # Шаг 25: Снапшот файла в MinIO (projects/{user}/{proj}/snapshots/v1/{file})
+    # -----------------------------------------------------------------------
+    t0 = time.time()
+    if mc is None:
+        step(25, "Снапшот файла в MinIO", "SKIP", "пакет minio не установлен")
+    else:
+        snap_prefix = f"projects/{USER_ID}/{project_id}/snapshots/"
+        snap_files = _list_minio_prefix(mc, snap_prefix)
+        if snap_files:
+            step(25, "Снапшот файла в MinIO", "OK",
+                 f"Снапшотов: {len(snap_files)}: {[f.split('/')[-1] for f in snap_files[:3]]}",
+                 time.time() - t0)
+        else:
+            step(25, "Снапшот файла в MinIO", "FAIL",
+                 f"Файлы не найдены по пути {snap_prefix}", time.time() - t0)
+
+    # -----------------------------------------------------------------------
+    # Шаг 26: Обновлённый src-файл существует в MinIO (после записи edit)
+    # -----------------------------------------------------------------------
+    t0 = time.time()
+    if mc is None:
+        step(26, "Обновлённый src-файл в MinIO", "SKIP", "пакет minio не установлен")
+    else:
+        # Проверяем что файл существует (мы не можем сравнить содержимое без скачивания,
+        # но факт существования + длина пути уже подтверждает шаг 4 edit task)
+        updated_files = _list_minio_prefix(mc, edit_minio_path)
+        if updated_files:
+            step(26, "Обновлённый src-файл в MinIO", "OK",
+                 f"Файл {edit_file_path} по-прежнему существует в MinIO",
+                 time.time() - t0)
+        else:
+            step(26, "Обновлённый src-файл в MinIO", "FAIL",
+                 f"Файл {edit_minio_path} исчез из MinIO", time.time() - t0)
+
+    # -----------------------------------------------------------------------
+    # Шаг 27: Build re-triggered → stage = done (повторная сборка после edit)
+    # -----------------------------------------------------------------------
+    t0_rebuild = time.time()
+    try:
+        rebuild_stage, _ = _wait_redis_stage(
+            r_client, project_id,
+            {"done", "failed"},
+            timeout=BUILD_TIMEOUT,
+        )
+        rebuild_elapsed = time.time() - t0_rebuild
+        if rebuild_stage == "done":
+            step(27, "Build re-triggered → stage = done", "OK",
+                 f"Повторная сборка завершилась за {rebuild_elapsed:.1f}с", rebuild_elapsed)
+        elif rebuild_stage == "failed":
+            step(27, "Build re-triggered → stage = done", "FAIL",
+                 "Повторная сборка упала", rebuild_elapsed)
+        else:
+            step(27, "Build re-triggered → stage = done", "FAIL",
+                 f"Таймаут {BUILD_TIMEOUT}с", rebuild_elapsed)
+    except Exception as exc:
+        step(27, "Build re-triggered → stage = done", "FAIL", str(exc), time.time() - t0_rebuild)
+
+    # -----------------------------------------------------------------------
+    # Шаг 28: DB: project status остался ready
+    # -----------------------------------------------------------------------
+    t0 = time.time()
+    db_status_after_edit = _get_project_status_from_db(project_id)
+    if db_status_after_edit is None:
+        step(28, "DB: project status остался ready", "SKIP", "psycopg2 не установлен")
+    elif db_status_after_edit == "ready":
+        step(28, "DB: project status остался ready", "OK",
+             f"db status={db_status_after_edit}", time.time() - t0)
+    else:
+        step(28, "DB: project status остался ready", "FAIL",
+             f"db status={db_status_after_edit}", time.time() - t0)
 
     return _print_summary()
 

@@ -300,7 +300,7 @@ _USER_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
 @pytest.mark.asyncio
 class TestGenerationPipeline:
-    async def _run(self, *, prompt="кофейня", model="gpt-5.4-mini",
+    async def _run(self, *, prompt="кофейня", model="gpt-5.4",
                    optimizer_spec=None, architect_files=None, gen_results=None):
         from app.workers.tasks.generation import _pipeline
 
@@ -388,10 +388,10 @@ class TestGenerationPipeline:
         assert last_payload["stage"] == "building"
 
     async def test_model_passed_to_all_agents(self):
-        r = await self._run(model="gpt-4o")
-        r["MockOpt"].assert_called_once_with(model="gpt-4o")
-        r["MockArch"].assert_called_once_with(model="gpt-4o")
-        r["MockGen"].assert_called_once_with(model="gpt-4o")
+        r = await self._run(model="gpt-5.4")
+        r["MockOpt"].assert_called_once_with(model="gpt-5.4")
+        r["MockArch"].assert_called_once_with(model="gpt-5.4")
+        r["MockGen"].assert_called_once_with(model="gpt-5.4")
 
     async def test_empty_file_list_no_gen_calls(self):
         arch = {"files": []}

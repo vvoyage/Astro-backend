@@ -11,6 +11,7 @@ celery_app = Celery(
         "app.workers.tasks.generation",
         "app.workers.tasks.build",
         "app.workers.tasks.deploy",
+        "app.workers.tasks.edit",
     ],
 )
 
@@ -28,5 +29,6 @@ celery_app.conf.update(
         "app.workers.tasks.generation.*": {"queue": "generation"},
         "app.workers.tasks.build.*": {"queue": "build"},
         "app.workers.tasks.deploy.*": {"queue": "deploy"},
+        "app.workers.tasks.edit.*": {"queue": "generation"},
     },
 )

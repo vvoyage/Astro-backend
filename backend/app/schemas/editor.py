@@ -14,13 +14,14 @@ class EditElementRequest(BaseModel):
     project_id: str
     element: ElementInfo
     instruction: str = Field(..., min_length=1, max_length=2000)
-    ai_model: str = Field(default="gpt-5.4-mini")
+    ai_model: str = Field(default="gpt-5.4")
 
 
 class EditElementResponse(BaseModel):
+    task_id: str
+    project_id: str
     file_path: str
-    new_content: str
-    snapshot_version: int
+    status: str = "queued"
 
 
 class GetFileRequest(BaseModel):

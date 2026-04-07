@@ -1,30 +1,54 @@
 """Эндпоинты редактора: AI-редактирование элементов и прямое обновление файлов."""
 from __future__ import annotations
 
-from fastapi import APIRouter
+import json
 
-from app.core.dependencies import CurrentUser, DbSession
+from fastapi import APIRouter, status
+
+from app.core.dependencies import CurrentUser, DbSession, RedisClient
 from app.schemas.editor import EditElementRequest, EditElementResponse, UpdateFileRequest
+from app.workers.tasks.edit import edit_element as edit_element_task
 
 router = APIRouter(prefix="/editor", tags=["editor"])
 
 
-@router.post("/edit", response_model=EditElementResponse)
+@router.post("/edit", response_model=EditElementResponse, status_code=status.HTTP_202_ACCEPTED)
 async def edit_element(
     body: EditElementRequest,
     db: DbSession,
+    redis: RedisClient,
     user: CurrentUser,
 ) -> EditElementResponse:
-    """AI-редактирование выбранного элемента по текстовой инструкции.
+    """Запускает AI-редактирование файла через Celery (A4 EditorAgent).
 
-    TODO:
-    1. Загрузить текущий файл из MinIO
-    2. Вызвать LLM с контекстом элемента + инструкцией
-    3. Сохранить обновлённый файл в MinIO
-    4. Создать снапшот через repositories.snapshot.create()
-    5. Вернуть новый контент файла
+    Возвращает 202 Accepted немедленно; прогресс читается из
+    Redis generation:{project_id}:status (те же SSE что у генерации).
     """
-    raise NotImplementedError
+    user_id: str = user["internal_user_id"]
+
+    redis_key = f"generation:{body.project_id}:status"
+    await redis.set(
+        redis_key,
+        json.dumps({"stage": "queued", "progress": 0}),
+        ex=86400,
+    )
+
+    task = edit_element_task.delay(
+        project_id=body.project_id,
+        user_id=user_id,
+        file_path=body.element.file_path,
+        element_id=body.element.editable_id,
+        prompt=body.instruction,
+        ai_model=body.ai_model,
+        project_context="",
+    )
+
+    return EditElementResponse(
+        task_id=str(task.id),
+        project_id=body.project_id,
+        file_path=body.element.file_path,
+        status="queued",
+    )
 
 
 @router.get("/file")

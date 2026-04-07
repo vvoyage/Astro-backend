@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 
 from kubernetes import client, config
@@ -5,7 +6,6 @@ from app.core.config import settings
 from loguru import logger
 import yaml
 import os
-import time
 
 logger = logger.bind(context="kubernetes")
 
@@ -43,7 +43,7 @@ class KubernetesService:
                 await self.cleanup_job(job_name)
                 
                 # Ждём реального удаления, иначе создание нового упадёт с конфликтом
-                max_retries = 10
+                max_retries = 30   # 30 × 5s = 150s max wait
                 for i in range(max_retries):
                     try:
                         self.batch_v1.read_namespaced_job(
@@ -51,7 +51,7 @@ class KubernetesService:
                             namespace="default"
                         )
                         logger.debug("Waiting for job deletion... attempt {}/{}", i + 1, max_retries)
-                        time.sleep(2)
+                        await asyncio.sleep(5)
                     except client.exceptions.ApiException as e:
                         if e.status == 404:
                             logger.info("Old job successfully deleted: {}", job_name)

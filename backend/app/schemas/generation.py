@@ -20,7 +20,7 @@ class GenerationStage(str, Enum):
 
 class GenerationRequest(BaseModel):
     prompt: str = Field(..., min_length=10, max_length=5000)
-    ai_model: str = Field(default="gpt-5.4-mini")
+    ai_model: str = Field(default="gpt-5.4")
     template_slug: str | None = None
 
 

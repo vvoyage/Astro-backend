@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class BaseAgent(ABC):
     """Базовый класс для агентов A0, A1, A2."""
 
-    def __init__(self, model: str = "gpt-5.4-mini", max_retries: int = 3) -> None:
+    def __init__(self, model: str = "gpt-5.4", max_retries: int = 3) -> None:
         self.model = model
         self.max_retries = max_retries
         self.client = AsyncOpenAI(

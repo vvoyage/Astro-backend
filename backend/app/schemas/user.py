@@ -22,5 +22,4 @@ class UserInDB(UserBase):
 
 
 class UserResponse(UserInDB):
-    """Response schema for /auth/me — excludes hashed_password."""
     pass
