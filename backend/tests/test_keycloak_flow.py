@@ -1,22 +1,22 @@
-"""Integration tests for Keycloak auth flow.
+"""Интеграционные тесты Keycloak auth flow.
 
-Tests the full cycle:
-  - registration via POST /auth/register
-  - token acquisition from Keycloak
-  - sync to PostgreSQL via POST /auth/sync
-  - protected endpoints with/without token
-  - role-based access (user vs admin)
-  - idempotency and error handling
+Проверяет полный цикл:
+  - регистрация через POST /auth/register
+  - получение токена из Keycloak
+  - синхронизация в PostgreSQL через POST /auth/sync
+  - защищённые эндпоинты с токеном и без
+  - ролевой доступ (user vs admin)
+  - идемпотентность и обработка ошибок
 
-Requirements (all must be running):
-  - Keycloak on http://localhost:8080  (admin / admin)
-  - FastAPI backend on http://localhost:8001
-  - PostgreSQL + Redis (used by the backend)
+Требования (всё должно быть запущено):
+  - Keycloak на http://localhost:8080  (admin / admin)
+  - FastAPI backend на http://localhost:8001
+  - PostgreSQL + Redis (используются backend'ом)
 
-Run:
+Запуск:
     cd backend
     pytest tests/test_keycloak_flow.py -v
-    pytest tests/test_keycloak_flow.py -v -s   # with print output
+    pytest tests/test_keycloak_flow.py -v -s   # с выводом print
 """
 from __future__ import annotations
 
@@ -26,9 +26,8 @@ from typing import Generator
 import httpx
 import pytest
 
-# ---------------------------------------------------------------------------
-# Config — override via env vars if needed
-# ---------------------------------------------------------------------------
+
+# Конфигурация
 
 BACKEND   = "http://localhost:8001/api/v1"
 KC_BASE   = "http://localhost:8080"
@@ -51,7 +50,7 @@ ADMIN_PASSWORD = "AdminPass1!"
 
 
 # ---------------------------------------------------------------------------
-# Availability guard — skip all if services are down
+# Проверка доступности — пропускаем всё если сервисы не запущены
 # ---------------------------------------------------------------------------
 
 def _check(url: str) -> bool:
@@ -66,12 +65,12 @@ _SERVICES_UP = _check(f"{KC_BASE}/realms/{KC_REALM}/.well-known/openid-configura
 
 pytestmark = pytest.mark.skipif(
     not _SERVICES_UP,
-    reason="Keycloak or backend is not running — skipping integration tests",
+    reason="Keycloak или backend не запущен — пропускаем интеграционные тесты",
 )
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Вспомогательные функции
 # ---------------------------------------------------------------------------
 
 def _kc_token_url() -> str:
@@ -169,7 +168,7 @@ def _sync(token: str) -> httpx.Response:
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Фикстуры
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
@@ -188,7 +187,7 @@ def registered_user() -> Generator[dict, None, None]:
     data = resp.json()
     yield data
 
-    # Cleanup
+    # Очистка
     _delete_kc_user(TEST_EMAIL)
     _delete_pg_user(TEST_EMAIL)
 
@@ -228,13 +227,13 @@ def admin_token(registered_user) -> Generator[str, None, None]:
     _sync(token)
     yield token
 
-    # Cleanup
+    # Очистка
     _delete_kc_user(ADMIN_EMAIL)
     _delete_pg_user(ADMIN_EMAIL)
 
 
 # ---------------------------------------------------------------------------
-# Tests: Registration
+# Тесты: Регистрация
 # ---------------------------------------------------------------------------
 
 class TestRegistration:
@@ -281,7 +280,7 @@ class TestRegistration:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Keycloak token
+# Тесты: Keycloak-токен
 # ---------------------------------------------------------------------------
 
 class TestKeycloakToken:
@@ -320,7 +319,7 @@ class TestKeycloakToken:
 
 
 # ---------------------------------------------------------------------------
-# Tests: /auth/sync
+# Тесты: /auth/sync
 # ---------------------------------------------------------------------------
 
 class TestAuthSync:
@@ -351,7 +350,7 @@ class TestAuthSync:
 
 
 # ---------------------------------------------------------------------------
-# Tests: /auth/me
+# Тесты: /auth/me
 # ---------------------------------------------------------------------------
 
 class TestAuthMe:
@@ -430,7 +429,7 @@ class TestAuthMe:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Protected endpoints (projects)
+# Тесты: Защищённые эндпоинты (проекты)
 # ---------------------------------------------------------------------------
 
 class TestProtectedEndpoints:
@@ -455,7 +454,7 @@ class TestProtectedEndpoints:
 
 
 # ---------------------------------------------------------------------------
-# Tests: /templates — public GET, admin-only write
+# Тесты: /templates — публичный GET, запись только для admin
 # ---------------------------------------------------------------------------
 
 class TestTemplates:
@@ -503,7 +502,7 @@ class TestTemplates:
         headers = {"Authorization": f"Bearer {admin_token}"}
         name = f"CRUD-{_RUN_ID}"
 
-        # CREATE
+        # СОЗДАНИЕ
         create_resp = httpx.post(
             f"{BACKEND}/templates/",
             headers=headers,
@@ -517,7 +516,7 @@ class TestTemplates:
         ids = [t["id"] for t in list_resp.json()]
         assert template_id in ids
 
-        # UPDATE
+        # ОБНОВЛЕНИЕ
         update_resp = httpx.put(
             f"{BACKEND}/templates/{template_id}",
             headers=headers,
@@ -526,7 +525,7 @@ class TestTemplates:
         assert update_resp.status_code == 200
         assert update_resp.json()["name"] == f"{name}-updated"
 
-        # DELETE
+        # УДАЛЕНИЕ
         delete_resp = httpx.delete(
             f"{BACKEND}/templates/{template_id}",
             headers=headers,
@@ -555,7 +554,7 @@ class TestTemplates:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Health check (sanity)
+# Тесты: Проверка работоспособности (healthcheck)
 # ---------------------------------------------------------------------------
 
 class TestHealth:

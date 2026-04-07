@@ -12,7 +12,7 @@ sys.path.append(str(root_dir))
 from app.services.storage import StorageService
 
 async def list_project_files(user_id: str, project_id: str = "000"):
-    print(f"\n=== Listing files for project {project_id} ===")
+    print(f"\n=== Файлы проекта {project_id} ===")
     storage = StorageService()
     
     try:
@@ -22,17 +22,17 @@ async def list_project_files(user_id: str, project_id: str = "000"):
             prefix=f"projects/{user_id}/{project_id}/"
         )
         
-        print("\nFound files:")
+        print("\nНайденные файлы:")
         for file in files:
             print(f"- {file}")
             
             # Пробуем прочитать содержимое файла
             if not file.endswith('/'):  # Пропускаем директории
                 content = await storage.get_file("projects", file)
-                print(f"  Size: {len(content)} bytes")
+                print(f"  Размер: {len(content)} байт")
                 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Ошибка: {str(e)}")
 
 if __name__ == "__main__":
     # ID пользователя из предыдущего вывода

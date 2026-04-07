@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
-# ---------------------------------------------------------------------------
-# core-config
-# ---------------------------------------------------------------------------
+
+# Конфигурация (core-config)
+
 
 class TestConfig:
     def test_redis_url_exists(self):
@@ -40,9 +40,9 @@ class TestConfig:
             assert required in fields, f"{required} must still be in Settings"
 
 
-# ---------------------------------------------------------------------------
-# core-agent-base: _extract_json (static, no mock needed)
-# ---------------------------------------------------------------------------
+
+# Базовый агент: _extract_json
+
 
 class TestExtractJson:
     def setup_method(self):
@@ -75,9 +75,9 @@ class TestExtractJson:
             self.agent._extract_json("not json at all")
 
 
-# ---------------------------------------------------------------------------
-# core-agent-base: _call_llm (mock AsyncOpenAI)
-# ---------------------------------------------------------------------------
+
+# Базовый агент: _call_llm
+
 
 @pytest.mark.asyncio
 class TestCallLlm:
@@ -91,7 +91,7 @@ class TestCallLlm:
         return _ConcreteAgent()
 
     def _mock_response(self, content: str):
-        """Строит фейковый ответ AsyncOpenAI.chat.completions.create()."""
+        """Строит фейковый ответ chat.completions.create()."""
         choice = MagicMock()
         choice.message.content = content
         response = MagicMock()
@@ -152,9 +152,9 @@ class TestCallLlm:
         assert call_count == 3
 
 
-# ---------------------------------------------------------------------------
-# core-agents: OptimizerAgent.run()
-# ---------------------------------------------------------------------------
+
+# Агент A0: OptimizerAgent.run()
+
 
 @pytest.mark.asyncio
 class TestOptimizerAgent:
@@ -189,9 +189,9 @@ class TestOptimizerAgent:
         assert "шаблон" not in user_prompt.lower() or "None" not in user_prompt
 
 
-# ---------------------------------------------------------------------------
-# core-agents: ArchitectAgent.run()
-# ---------------------------------------------------------------------------
+
+# Агент A1: ArchitectAgent.run()
+
 
 @pytest.mark.asyncio
 class TestArchitectAgent:
@@ -223,9 +223,9 @@ class TestArchitectAgent:
         assert result == payload
 
 
-# ---------------------------------------------------------------------------
-# core-agents: CodeGeneratorAgent.run()
-# ---------------------------------------------------------------------------
+
+# Агент A2: CodeGeneratorAgent.run()
+
 
 @pytest.mark.asyncio
 class TestCodeGeneratorAgent:

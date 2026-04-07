@@ -1,15 +1,15 @@
-"""pytest configuration for backend tests."""
+"""Конфигурация pytest для backend-тестов."""
 import os
 import sys
 from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
-# Stub all packages not installed in the test environment.
-# MUST happen before any app module is imported by test files.
+# Заглушки для пакетов, не установленных в тестовом окружении.
+# ОБЯЗАТЕЛЬНО до импорта любого модуля приложения в тест-файлах.
 # ---------------------------------------------------------------------------
 
 def _stub(name: str) -> MagicMock:
-    """Register a MagicMock as a module stub if the module isn't already there."""
+    """Регистрирует MagicMock как заглушку модуля, если модуль ещё не загружен."""
     m = MagicMock(name=name)
     sys.modules.setdefault(name, m)
     return sys.modules[name]
@@ -17,7 +17,7 @@ def _stub(name: str) -> MagicMock:
 
 # --- minio ---
 _minio = _stub("minio")
-_minio.Minio = MagicMock  # keep as a callable class-like object
+_minio.Minio = MagicMock  # оставляем как вызываемый класс-подобный объект
 
 # --- redis ---
 _stub("redis")
@@ -37,21 +37,21 @@ _k8s.client = _k8s_client
 _k8s.config = _k8s_config
 
 # --- sqlalchemy family ---
-# DeclarativeBase must be a real class so subclassing works.
+# DeclarativeBase должен быть настоящим классом, иначе наследование не работает.
 class _FakeBase:
     pass
 
 _stub("sqlalchemy")
 _stub("sqlalchemy.ext")
 
-_sa_asyncio = _stub("sqlalchemy.ext.asyncio")   # create_async_engine etc → MagicMock
+_sa_asyncio = _stub("sqlalchemy.ext.asyncio")   # create_async_engine и др. → MagicMock
 _sa_orm = _stub("sqlalchemy.orm")
-_sa_orm.DeclarativeBase = _FakeBase              # Project(Base) inherits from real class
+_sa_orm.DeclarativeBase = _FakeBase              # Project(Base) наследуется от настоящего класса
 _stub("sqlalchemy.sql")
 
 # --- celery ---
-# @celery_app.task(bind=True, ...) must keep the original function intact,
-# because tests import and call _pipeline / _build directly.
+# @celery_app.task(bind=True, ...) должен сохранять оригинальную функцию,
+# т.к. тесты импортируют и вызывают _pipeline / _build напрямую.
 class _FakeCelery:
     def __init__(self, *args, **kwargs):
         self.conf = MagicMock()
@@ -67,12 +67,12 @@ class _FakeCelery:
 _celery_mod = _stub("celery")
 _celery_mod.Celery = _FakeCelery
 
-# --- asyncpg / aio_pika (transitive deps of SQLAlchemy async drivers) ---
+# --- asyncpg / aio_pika (транзитивные зависимости async-драйверов SQLAlchemy) ---
 _stub("asyncpg")
 _stub("aio_pika")
 
 # ---------------------------------------------------------------------------
-# Minimal env vars so Pydantic Settings doesn't fail on import
+# Минимальные env vars, чтобы Pydantic Settings не падал при импорте
 # ---------------------------------------------------------------------------
 _TEST_ENV = {
     "DATABASE_URL": "postgresql+asyncpg://test:test@localhost/test",

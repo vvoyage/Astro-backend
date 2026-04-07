@@ -1,4 +1,4 @@
-"""Unit-тесты для: StorageService, generation pipeline, build task.
+"""Unit-тесты для: StorageService, пайплайн генерации, задача сборки.
 
 Запуск:
     cd backend
@@ -14,7 +14,7 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Вспомогательные функции
 # ---------------------------------------------------------------------------
 
 def _make_storage():
@@ -27,7 +27,7 @@ def _make_storage():
 
     with patch.object(_storage_mod, "Minio", return_value=mock_client):
         svc = StorageService()
-    # svc.client is already set to mock_client; Minio patch no longer needed
+    # svc.client уже содержит mock_client; патч Minio больше не нужен
     return svc
 
 
@@ -271,7 +271,7 @@ class TestSyncGetObjectResponseClosed:
 
 
 # ===========================================================================
-# generation pipeline — _pipeline()
+# Пайплайн генерации — _pipeline()
 # ===========================================================================
 
 def _default_optimizer_spec():
@@ -406,7 +406,7 @@ class TestGenerationPipeline:
 
 
 # ===========================================================================
-# build task — _build()
+# Задача сборки — _build()
 # ===========================================================================
 
 @pytest.mark.asyncio
