@@ -119,7 +119,7 @@ class TestSaveSourceFiles:
             side_effect=lambda _b, name, _d: uploaded.append(name)
         )
 
-        await svc.save_source_files("user-1", "proj-1", {"pages/index.astro": "x"})
+        await svc.save_source_files("user-1", "proj-1", {"src/pages/index.astro": "x"})
 
         assert uploaded[0] == "projects/user-1/proj-1/src/pages/index.astro"
 

@@ -30,6 +30,7 @@ class Project(ProjectBase):
     template_id: Optional[UUID4]
     prompt: str  # промпт всегда есть
     s3_path: str
+    status: str
     created_at: datetime
 
     class Config:

@@ -5,6 +5,7 @@ from typing import List, Optional, Union
 
 from loguru import logger
 from minio import Minio
+from minio.commonconfig import CopySource
 
 from app.core.config import settings
 
@@ -74,6 +75,9 @@ class StorageService:
 
     def _sync_remove_object(self, bucket_name: str, object_name: str) -> None:
         self.client.remove_object(bucket_name, object_name)
+
+    def _sync_copy_object(self, bucket_name: str, src_object: str, dst_object: str) -> None:
+        self.client.copy_object(bucket_name, dst_object, CopySource(bucket_name, src_object))
 
     def _sync_get_object(self, bucket_name: str, object_name: str) -> bytes:
         response = self.client.get_object(bucket_name, object_name)
@@ -173,6 +177,25 @@ class StorageService:
         except Exception as e:
             logger.error("Error listing files in bucket {}: {}", self.BUCKETS[bucket_type], str(e))
             raise Exception(f"Error listing files in MinIO: {str(e)}")
+
+    async def copy_directory(self, bucket_type: str, src_prefix: str, dst_prefix: str) -> None:
+        """Копирует все объекты из src_prefix в dst_prefix внутри одного бакета."""
+        if bucket_type not in self.BUCKETS:
+            raise ValueError(f"Invalid bucket type: {bucket_type}")
+        bucket_name = self.BUCKETS[bucket_type]
+        src_prefix = src_prefix.rstrip("/") + "/"
+        dst_prefix = dst_prefix.rstrip("/") + "/"
+        try:
+            object_names: List[str] = await asyncio.to_thread(
+                self._sync_list_objects, bucket_name, src_prefix
+            )
+            for src_obj in object_names:
+                dst_obj = dst_prefix + src_obj[len(src_prefix):]
+                await asyncio.to_thread(self._sync_copy_object, bucket_name, src_obj, dst_obj)
+            logger.info("Copied {} objects from {} to {}", len(object_names), src_prefix, dst_prefix)
+        except Exception as e:
+            logger.error("Error copying directory {} -> {}: {}", src_prefix, dst_prefix, str(e))
+            raise Exception(f"Error copying directory in MinIO: {str(e)}")
 
     async def get_file(self, bucket_type: str, object_name: str) -> Optional[bytes]:
         if bucket_type not in self.BUCKETS:

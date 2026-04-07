@@ -18,9 +18,16 @@ def _stub(name: str) -> MagicMock:
 # --- minio ---
 _minio = _stub("minio")
 _minio.Minio = MagicMock  # оставляем как вызываемый класс-подобный объект
+_minio_common = _stub("minio.commonconfig")
+_minio_common.CopySource = MagicMock
+_minio.commonconfig = _minio_common
 
 # --- redis ---
-_stub("redis")
+_redis_mod = _stub("redis")
+_redis_asyncio = _stub("redis.asyncio")
+_redis_asyncio.Redis = MagicMock
+_redis_asyncio.from_url = MagicMock
+_redis_mod.asyncio = _redis_asyncio
 
 # --- loguru ---
 _loguru = _stub("loguru")

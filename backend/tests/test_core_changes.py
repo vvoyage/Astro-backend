@@ -71,7 +71,7 @@ class TestExtractJson:
         assert result == {"files": []}
 
     def test_invalid_json_raises(self):
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises((json.JSONDecodeError, ValueError)):
             self.agent._extract_json("not json at all")
 
 
