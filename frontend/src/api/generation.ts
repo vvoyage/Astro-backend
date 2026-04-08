@@ -2,10 +2,13 @@ import apiClient from './client';
 
 export interface Template {
   id: string;
+  slug: string;
   name: string;
-  description: string;
+  description: string | null;
+  is_active: boolean;
+  text_prompt: string;
+  prompt_hint: string;
   preview_url: string | null;
-  prompt_hint: string | null;
 }
 
 export interface GenerationRequest {

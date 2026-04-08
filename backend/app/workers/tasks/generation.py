@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(bind=True, name="generation.run_pipeline", max_retries=2)
-def run_generation_pipeline(self, project_id: str, user_id: str, prompt: str, ai_model: str) -> dict:
+def run_generation_pipeline(
+    self, project_id: str, user_id: str, prompt: str, ai_model: str, template_prompt: str | None = None
+) -> dict:
     """
     Запускает полный pipeline: A0 → A1 → A2 → MinIO → build.
     Прогресс пишется в Redis: generation:{project_id}:status = {"stage": ..., "progress": ...}
     """
-    # StorageService инициализируется здесь (sync-контекст), чтобы его minio-вызовы
-    # не блокировали event loop внутри _pipeline()
     try:
         storage = StorageService()
     except Exception as exc:
@@ -37,7 +37,7 @@ def run_generation_pipeline(self, project_id: str, user_id: str, prompt: str, ai
         raise self.retry(exc=exc, countdown=10)
 
     try:
-        asyncio.run(_run_pipeline(project_id, user_id, prompt, ai_model, storage))
+        asyncio.run(_run_pipeline(project_id, user_id, prompt, ai_model, storage, template_prompt=template_prompt))
     except Exception as exc:
         logger.exception("Generation pipeline failed for project %s: %s", project_id, exc)
         _set_redis_status(project_id, "failed", 0)
@@ -60,12 +60,16 @@ def _set_redis_status(project_id: str, stage: str, progress: int) -> None:
         logger.warning("Could not write Redis status for project %s", project_id)
 
 
-async def _run_pipeline(project_id: str, user_id: str, prompt: str, ai_model: str, storage: StorageService) -> None:
+async def _run_pipeline(
+    project_id: str, user_id: str, prompt: str, ai_model: str, storage: StorageService, template_prompt: str | None = None
+) -> None:
     await engine.dispose()
-    await _pipeline(project_id, user_id, prompt, ai_model, storage)
+    await _pipeline(project_id, user_id, prompt, ai_model, storage, template_prompt=template_prompt)
 
 
-async def _pipeline(project_id: str, user_id: str, prompt: str, ai_model: str, storage: StorageService) -> None:
+async def _pipeline(
+    project_id: str, user_id: str, prompt: str, ai_model: str, storage: StorageService, template_prompt: str | None = None
+) -> None:
     async with AsyncSessionFactory() as db:
         await project_repo.update_status(db, UUID(project_id), "generating")
         await db.commit()
@@ -75,7 +79,10 @@ async def _pipeline(project_id: str, user_id: str, prompt: str, ai_model: str, s
 
     # A0 — разбираем промпт пользователя в структурированную спецификацию
     optimizer = OptimizerAgent(model=ai_model)
-    structured_spec: dict = await optimizer.run({"prompt": prompt})
+    optimizer_input: dict = {"prompt": prompt}
+    if template_prompt:
+        optimizer_input["template_slug"] = template_prompt
+    structured_spec: dict = await optimizer.run(optimizer_input)
     logger.info("A0 structured spec: %s", json.dumps(structured_spec, ensure_ascii=False, indent=2))
     _set_redis_status(project_id, "optimizer", 25)
 

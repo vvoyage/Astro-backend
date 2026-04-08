@@ -54,9 +54,9 @@ export default function PromptForm() {
               <TemplateCard
                 key={t.id}
                 template={t}
-                selected={templateSlug === t.id}
+                selected={templateSlug === t.slug}
                 onSelect={() => {
-                  setTemplateSlug(t.id);
+                  setTemplateSlug(t.slug);
                   if (t.prompt_hint) setPrompt(t.prompt_hint);
                 }}
               />

@@ -2,10 +2,9 @@ from typing import Annotated, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
 
 from app.core.dependencies import DbSession, require_role
-from app.db.models.template import Template as TemplateModel
+from app.repositories import template as template_repo
 from app.schemas.template import Template, TemplateCreate, TemplateUpdate
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -14,10 +13,9 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 @router.get("/", response_model=List[Template])
 async def get_templates(
     session: DbSession,
-) -> List[TemplateModel]:
-    """Получение списка всех доступных шаблонов. Публичный эндпоинт."""
-    result = await session.execute(select(TemplateModel))
-    return result.scalars().all()
+) -> list:
+    """Получение списка активных шаблонов. Публичный эндпоинт."""
+    return await template_repo.list_active(session)
 
 
 @router.post("/", response_model=Template, status_code=status.HTTP_201_CREATED)
@@ -25,10 +23,16 @@ async def create_template(
     data: TemplateCreate,
     session: DbSession,
     _: Annotated[dict, Depends(require_role("admin"))],
-) -> TemplateModel:
+) -> object:
     """Создать шаблон. Только для admin."""
-    template = TemplateModel(name=data.name, text_prompt=data.text_prompt)
-    session.add(template)
+    template = await template_repo.create(
+        session,
+        slug=data.slug,
+        name=data.name,
+        text_prompt=data.text_prompt,
+        description=data.description,
+        is_active=data.is_active,
+    )
     await session.commit()
     await session.refresh(template)
     return template
@@ -40,14 +44,20 @@ async def update_template(
     data: TemplateUpdate,
     session: DbSession,
     _: Annotated[dict, Depends(require_role("admin"))],
-) -> TemplateModel:
+) -> object:
     """Обновить шаблон. Только для admin."""
-    result = await session.execute(select(TemplateModel).where(TemplateModel.id == template_id))
-    template = result.scalar_one_or_none()
+    template = await template_repo.get_by_id(session, template_id)
     if template is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
-    template.name = data.name
-    template.text_prompt = data.text_prompt
+    template = await template_repo.update(
+        session,
+        template,
+        slug=data.slug,
+        name=data.name,
+        text_prompt=data.text_prompt,
+        description=data.description,
+        is_active=data.is_active,
+    )
     await session.commit()
     await session.refresh(template)
     return template
@@ -60,9 +70,8 @@ async def delete_template(
     _: Annotated[dict, Depends(require_role("admin"))],
 ) -> None:
     """Удалить шаблон. Только для admin."""
-    result = await session.execute(select(TemplateModel).where(TemplateModel.id == template_id))
-    template = result.scalar_one_or_none()
+    template = await template_repo.get_by_id(session, template_id)
     if template is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template not found")
-    await session.delete(template)
+    await template_repo.delete(session, template)
     await session.commit()

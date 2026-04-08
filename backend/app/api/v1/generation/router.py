@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.dependencies import CurrentUser, DbSession, RedisClient
 from app.repositories import project as project_repo
+from app.repositories import template as template_repo
 from app.schemas.generation import GenerationRequest
 from app.workers.tasks.generation import run_generation_pipeline
 
@@ -48,11 +49,18 @@ async def start_generation(
         ex=86400,
     )
 
+    template_prompt: str | None = None
+    if body.template_slug:
+        tmpl = await template_repo.get_by_slug(db, body.template_slug)
+        if tmpl:
+            template_prompt = tmpl.text_prompt
+
     run_generation_pipeline.delay(
         str(project.id),
         str(user_id),
         body.prompt,
         body.ai_model,
+        template_prompt=template_prompt,
     )
 
     return {"project_id": str(project.id), "status": "queued"}
