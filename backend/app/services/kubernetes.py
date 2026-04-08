@@ -35,7 +35,7 @@ class KubernetesService:
         try:
             old_job = self.batch_v1.read_namespaced_job(
                 name=job_name,
-                namespace="default"
+                namespace=settings.KUBERNETES_NAMESPACE
             )
             
             if old_job:
@@ -48,7 +48,7 @@ class KubernetesService:
                     try:
                         self.batch_v1.read_namespaced_job(
                             name=job_name,
-                            namespace="default"
+                            namespace=settings.KUBERNETES_NAMESPACE
                         )
                         logger.debug("Waiting for job deletion... attempt {}/{}", i + 1, max_retries)
                         await asyncio.sleep(5)
@@ -87,7 +87,7 @@ apt-get update -qq && apt-get install -y -qq wget
 wget -q https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc
 chmod +x /usr/local/bin/mc
 
-mc alias set minio http://host.docker.internal:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
+mc alias set minio $MINIO_URL $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
 
 echo "=== Source files in MinIO ==="
 mc ls --recursive minio/astro-projects/projects/$USER_ID/$PROJECT_ID/src/
@@ -117,6 +117,10 @@ echo "=== Upload complete ==="
                                 env=[
                                     client.V1EnvVar(name="USER_ID", value=user_id),
                                     client.V1EnvVar(name="PROJECT_ID", value=project_id),
+                                    client.V1EnvVar(
+                                        name="MINIO_URL",
+                                        value=f"{'https' if settings.MINIO_SECURE else 'http'}://{settings.MINIO_ENDPOINT}"
+                                    ),
                                     client.V1EnvVar(
                                         name="MINIO_ACCESS_KEY",
                                         value=settings.MINIO_ACCESS_KEY
@@ -162,7 +166,7 @@ echo "=== Upload complete ==="
         
         try:
             self.batch_v1.create_namespaced_job(
-                namespace="default",
+                namespace=settings.KUBERNETES_NAMESPACE,
                 body=job
             )
             logger.info("Successfully created job: {}", job_name)
@@ -176,7 +180,7 @@ echo "=== Upload complete ==="
         try:
             job = self.batch_v1.read_namespaced_job_status(
                 name=job_name,
-                namespace="default"
+                namespace=settings.KUBERNETES_NAMESPACE
             )
             
             status = "Running"
@@ -197,7 +201,7 @@ echo "=== Upload complete ==="
         try:
             self.batch_v1.delete_namespaced_job(
                 name=job_name,
-                namespace="default",
+                namespace=settings.KUBERNETES_NAMESPACE,
                 body=client.V1DeleteOptions(
                     propagation_policy="Foreground"
                 )
@@ -211,7 +215,7 @@ echo "=== Upload complete ==="
         """Возвращает логи последнего пода job'а."""
         try:
             pods = self.v1.list_namespaced_pod(
-                namespace="default",
+                namespace=settings.KUBERNETES_NAMESPACE,
                 label_selector=f"job-name={job_name}"
             )
             
@@ -222,7 +226,7 @@ echo "=== Upload complete ==="
             pod = pods.items[-1]
             logs = self.v1.read_namespaced_pod_log(
                 name=pod.metadata.name,
-                namespace="default"
+                namespace=settings.KUBERNETES_NAMESPACE
             )
             
             logger.debug("Retrieved logs for job {}", job_name)

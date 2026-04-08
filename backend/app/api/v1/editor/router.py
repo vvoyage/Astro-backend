@@ -15,6 +15,25 @@ from app.workers.tasks.edit import edit_element as edit_element_task
 router = APIRouter(prefix="/editor", tags=["editor"])
 
 
+@router.get("/files")
+async def list_project_files(
+    project_id: str,
+    user: CurrentUser,
+) -> dict:
+    """Возвращает список файлов проекта из MinIO (только src/*)."""
+    user_id: str = user["internal_user_id"]
+    storage = StorageService()
+    prefix = f"projects/{user_id}/{project_id}/src/"
+    try:
+        all_paths = await storage.list_files("projects", prefix)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+    # Отдаём относительные пути (без prefix) и фильтруем маркеры директорий
+    files = [p[len(prefix):] for p in all_paths if not p.endswith("/") and p[len(prefix):]]
+    return {"project_id": project_id, "files": files}
+
+
 @router.post("/edit", response_model=EditElementResponse, status_code=status.HTTP_202_ACCEPTED)
 async def edit_element(
     body: EditElementRequest,

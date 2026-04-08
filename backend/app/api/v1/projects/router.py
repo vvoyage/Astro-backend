@@ -4,17 +4,19 @@ from __future__ import annotations
 import io
 import urllib.parse
 import zipfile
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.dependencies import CurrentUser, DbSession
 from app.db.models.project import Project as ProjectModel
 from app.db.models.template import Template as TemplateModel
-from app.schemas.project import Project, ProjectCreate, ProjectPreview
+from app.schemas.project import Project, ProjectCreate, ProjectPreview, ProjectUpdate
 from app.services.storage import StorageService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -52,6 +54,45 @@ async def get_project(
     """Возвращает один проект (должен принадлежать текущему пользователю)."""
     user_id = UUID(user["internal_user_id"])
     project = await _get_owned_project(session, project_id, user_id)
+    return project
+
+
+# ---------------------------------------------------------------------------
+# Обновление
+# ---------------------------------------------------------------------------
+
+@router.patch("/{project_id}", response_model=Project)
+async def update_project(
+    project_id: UUID,
+    body: ProjectUpdate,
+    user: CurrentUser,
+    session: DbSession,
+) -> ProjectModel:
+    """Обновляет name и/или prompt проекта."""
+    user_id = UUID(user["internal_user_id"])
+    project = await _get_owned_project(session, project_id, user_id)
+
+    if body.name is not None:
+        # Проверка уникальности имени (исключая текущий проект)
+        dup = await session.execute(
+            select(ProjectModel).where(
+                ProjectModel.user_id == user_id,
+                ProjectModel.name == body.name,
+                ProjectModel.id != project_id,
+            )
+        )
+        if dup.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Project with this name already exists",
+            )
+        project.name = body.name  # type: ignore[assignment]
+
+    if body.prompt is not None:
+        project.prompt = body.prompt  # type: ignore[assignment]
+
+    await session.flush()
+    await session.refresh(project)
     return project
 
 
@@ -227,6 +268,35 @@ async def export_project(
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename_encoded}"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Статус  (polling-альтернатива SSE)
+# ---------------------------------------------------------------------------
+
+class ProjectStatus(BaseModel):
+    status: str
+    preview_url: Optional[str]
+
+
+@router.get("/{project_id}/status", response_model=ProjectStatus)
+async def get_project_status(
+    project_id: UUID,
+    user: CurrentUser,
+    session: DbSession,
+) -> ProjectStatus:
+    """Returns the current build status and preview URL for polling clients."""
+    user_id = UUID(user["internal_user_id"])
+    project = await _get_owned_project(session, project_id, user_id)
+
+    preview_url: Optional[str] = None
+    if project.s3_path and project.s3_path != "pending":
+        preview_url = (
+            f"{settings.MINIO_PUBLIC_URL}/astro-projects"
+            f"/{project.s3_path}/build/index.html"
+        )
+
+    return ProjectStatus(status=project.status, preview_url=preview_url)
 
 
 # ---------------------------------------------------------------------------

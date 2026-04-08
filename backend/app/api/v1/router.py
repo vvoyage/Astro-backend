@@ -8,6 +8,7 @@ from app.api.v1.snapshots.router import router as snapshots_router
 from app.api.v1.deployments.router import router as deployments_router
 from app.api.v1.generation.router import router as generation_router
 from app.api.v1.editor.router import router as editor_router
+from app.api.v1.assets.router import router as assets_router
 
 # users/ объединён с auth/ — отдельный роутер не нужен
 from app.api.v1.users.router import router as users_router
@@ -22,3 +23,4 @@ v1_router.include_router(snapshots_router)
 v1_router.include_router(deployments_router)
 v1_router.include_router(generation_router)
 v1_router.include_router(editor_router)
+v1_router.include_router(assets_router)

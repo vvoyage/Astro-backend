@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.dependencies import close_redis, init_redis
 from app.core.logging import setup_logging
 from app.db import models
+from app.services.storage import StorageService
 
 logger = setup_logging()
 
@@ -18,6 +19,7 @@ logger = setup_logging()
 async def lifespan(app: FastAPI):
     logger.info("Starting application")
     await init_redis()
+    StorageService()  # инициализирует бакеты и применяет политики доступа
     yield
     logger.info("Shutting down application")
     await close_redis()

@@ -25,7 +25,7 @@ class StorageService:
     }
 
     def __init__(self) -> None:
-        logger.info("Initializing MinIO client with endpoint: {}", settings.MINIO_ENDPOINT)
+        logger.info("Инициализация MinIO клиента, endpoint: {}", settings.MINIO_ENDPOINT)
         self.client = Minio(
             settings.MINIO_ENDPOINT,
             access_key=settings.MINIO_ACCESS_KEY,
@@ -34,17 +34,21 @@ class StorageService:
         )
         self._initialize_buckets()
 
+    PUBLIC_BUCKETS = {"projects", "assets"}
+
     def _sync_initialize_buckets(self) -> None:
-        for bucket_name in self.BUCKETS.values():
+        for bucket_type, bucket_name in self.BUCKETS.items():
             try:
                 if not self.client.bucket_exists(bucket_name):
-                    logger.info("Creating bucket: {}", bucket_name)
+                    logger.info("Создание бакета: {}", bucket_name)
                     self.client.make_bucket(bucket_name)
-                    if bucket_name == self.BUCKETS["projects"]:
-                        self._sync_set_public_policy(bucket_name)
-                        logger.debug("Set public policy for bucket: {}", bucket_name)
+                # Политика публичного чтения применяется при каждом старте — в том числе
+                # для бакетов, созданных до того, как политика была добавлена.
+                if bucket_type in self.PUBLIC_BUCKETS:
+                    self._sync_set_public_policy(bucket_name)
+                    logger.debug("Установлена публичная политика для бакета: {}", bucket_name)
             except Exception as e:
-                logger.error("Error initializing bucket {}: {}", bucket_name, str(e))
+                logger.error("Ошибка инициализации бакета {}: {}", bucket_name, str(e))
                 raise
 
     def _sync_set_public_policy(self, bucket_name: str) -> None:
@@ -75,6 +79,10 @@ class StorageService:
 
     def _sync_remove_object(self, bucket_name: str, object_name: str) -> None:
         self.client.remove_object(bucket_name, object_name)
+
+    async def _delete_single_object(self, bucket_name: str, object_name: str) -> None:
+        """Удаляет один объект по реальному имени бакета и ключу."""
+        await asyncio.to_thread(self._sync_remove_object, bucket_name, object_name)
 
     def _sync_copy_object(self, bucket_name: str, src_object: str, dst_object: str) -> None:
         self.client.copy_object(bucket_name, dst_object, CopySource(bucket_name, src_object))
@@ -110,7 +118,7 @@ class StorageService:
             raise ValueError(f"Invalid bucket type: {bucket_type}")
 
         try:
-            logger.debug("Saving file {} to bucket {}", object_name, self.BUCKETS[bucket_type])
+            logger.debug("Сохранение файла {} в бакет {}", object_name, self.BUCKETS[bucket_type])
             raw: bytes = data if isinstance(data, bytes) else data.getvalue()
             await asyncio.to_thread(
                 self._sync_put_object,
@@ -118,9 +126,9 @@ class StorageService:
                 object_name,
                 raw,
             )
-            logger.info("Saved file {} to bucket {}", object_name, self.BUCKETS[bucket_type])
+            logger.info("Файл {} сохранён в бакет {}", object_name, self.BUCKETS[bucket_type])
         except Exception as e:
-            logger.error("Error saving file {} to bucket {}: {}", object_name, self.BUCKETS[bucket_type], str(e))
+            logger.error("Ошибка сохранения файла {} в бакет {}: {}", object_name, self.BUCKETS[bucket_type], str(e))
             raise Exception(f"Error saving file to MinIO: {str(e)}")
 
     async def save_source_files(self, user_id: str, project_id: str, files: dict[str, str]) -> None:
@@ -135,7 +143,7 @@ class StorageService:
         ]
         await asyncio.gather(*tasks)
         logger.info(
-            "Saved {} source files for project {}/{}", len(files), user_id, project_id
+            "Сохранено {} исходных файлов для проекта {}/{}", len(files), user_id, project_id
         )
 
     async def create_directory(self, bucket_type: str, directory: str) -> None:
@@ -150,7 +158,7 @@ class StorageService:
                 b"",
             )
         except Exception as e:
-            logger.error("Error creating directory {} in bucket {}: {}", directory, self.BUCKETS[bucket_type], str(e))
+            logger.error("Ошибка создания директории {} в бакете {}: {}", directory, self.BUCKETS[bucket_type], str(e))
             raise Exception(f"Error creating directory in MinIO: {str(e)}")
 
     async def delete_directory(self, bucket_type: str, prefix: str) -> None:
@@ -164,7 +172,7 @@ class StorageService:
             for name in object_names:
                 await asyncio.to_thread(self._sync_remove_object, bucket_name, name)
         except Exception as e:
-            logger.error("Error deleting directory {} from bucket {}: {}", prefix, self.BUCKETS[bucket_type], str(e))
+            logger.error("Ошибка удаления директории {} из бакета {}: {}", prefix, self.BUCKETS[bucket_type], str(e))
             raise Exception(f"Error deleting directory from MinIO: {str(e)}")
 
     async def list_files(self, bucket_type: str, prefix: str) -> List[str]:
@@ -175,7 +183,7 @@ class StorageService:
                 self._sync_list_objects, self.BUCKETS[bucket_type], prefix
             )
         except Exception as e:
-            logger.error("Error listing files in bucket {}: {}", self.BUCKETS[bucket_type], str(e))
+            logger.error("Ошибка получения списка файлов в бакете {}: {}", self.BUCKETS[bucket_type], str(e))
             raise Exception(f"Error listing files in MinIO: {str(e)}")
 
     async def copy_directory(self, bucket_type: str, src_prefix: str, dst_prefix: str) -> None:
@@ -192,9 +200,9 @@ class StorageService:
             for src_obj in object_names:
                 dst_obj = dst_prefix + src_obj[len(src_prefix):]
                 await asyncio.to_thread(self._sync_copy_object, bucket_name, src_obj, dst_obj)
-            logger.info("Copied {} objects from {} to {}", len(object_names), src_prefix, dst_prefix)
+            logger.info("Скопировано {} объектов из {} в {}", len(object_names), src_prefix, dst_prefix)
         except Exception as e:
-            logger.error("Error copying directory {} -> {}: {}", src_prefix, dst_prefix, str(e))
+            logger.error("Ошибка копирования директории {} -> {}: {}", src_prefix, dst_prefix, str(e))
             raise Exception(f"Error copying directory in MinIO: {str(e)}")
 
     async def get_file(self, bucket_type: str, object_name: str) -> Optional[bytes]:
@@ -205,5 +213,5 @@ class StorageService:
                 self._sync_get_object, self.BUCKETS[bucket_type], object_name
             )
         except Exception as e:
-            logger.error("Error reading file {} from bucket {}: {}", object_name, self.BUCKETS[bucket_type], str(e))
+            logger.error("Ошибка чтения файла {} из бакета {}: {}", object_name, self.BUCKETS[bucket_type], str(e))
             raise Exception(f"Error reading file from MinIO: {str(e)}")

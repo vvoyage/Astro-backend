@@ -60,12 +60,13 @@ def run_build(self, project_id: str, user_id: str) -> dict:
 # Вспомогательные функции
 # ---------------------------------------------------------------------------
 
-def _set_redis_status(project_id: str, stage: str, progress: int) -> None:
+def _set_redis_status(project_id: str, stage: str, progress: int, **extra) -> None:
     try:
         r = redis_lib.from_url(settings.REDIS_URL)
+        payload = {"stage": stage, "progress": progress, **extra}
         r.set(
             f"generation:{project_id}:status",
-            json.dumps({"stage": stage, "progress": progress}),
+            json.dumps(payload),
         )
     except Exception:
         logger.warning("Could not write Redis status for project %s", project_id)
@@ -105,5 +106,6 @@ async def _build(project_id: str, user_id: str) -> None:
         await project_repo.update_status(db, UUID(project_id), "ready")
         await db.commit()
 
-    _set_redis_status(project_id, "done", 100)
-    logger.info("Project %s is ready", project_id)
+    preview_url = f"{settings.MINIO_PUBLIC_URL}/astro-projects/projects/{user_id}/{project_id}/build/index.html"
+    _set_redis_status(project_id, "done", 100, preview_url=preview_url)
+    logger.info("Project %s is ready, preview_url=%s", project_id, preview_url)

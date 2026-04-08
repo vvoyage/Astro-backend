@@ -1,6 +1,8 @@
-from pydantic import BaseModel, UUID4, model_validator
+from pydantic import BaseModel, UUID4, computed_field, model_validator
 from datetime import datetime
 from typing import Optional
+
+from app.core.config import settings
 
 class ProjectBase(BaseModel):
     name: str  # название проекта
@@ -15,11 +17,14 @@ class ProjectCreate(ProjectBase):
             raise ValueError("Either template_id or prompt must be provided")
         return self
 
-class ProjectUpdate(ProjectBase):
-    prompt: Optional[str] = None  # промпт можно обновлять
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    prompt: Optional[str] = None
 
     @model_validator(mode='after')
-    def check_prompt_not_empty(self) -> 'ProjectUpdate':
+    def check_at_least_one(self) -> 'ProjectUpdate':
+        if self.name is None and self.prompt is None:
+            raise ValueError("At least one of name or prompt must be provided")
         if self.prompt is not None and not self.prompt.strip():
             raise ValueError("Prompt cannot be empty if provided")
         return self
@@ -32,6 +37,13 @@ class Project(ProjectBase):
     s3_path: str
     status: str
     created_at: datetime
+
+    @computed_field
+    @property
+    def preview_url(self) -> Optional[str]:
+        if not self.s3_path or self.s3_path == "pending":
+            return None
+        return f"{settings.MINIO_PUBLIC_URL}/astro-projects/{self.s3_path}/build/index.html"
 
     class Config:
         from_attributes = True
