@@ -27,10 +27,10 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     # Маршрутизация очередей
     task_routes={
-        "app.workers.tasks.generation.*": {"queue": "generation"},
-        "app.workers.tasks.build.*": {"queue": "build"},
-        "app.workers.tasks.deploy.*": {"queue": "deploy"},
-        "app.workers.tasks.edit.*": {"queue": "generation"},
+        "generation.run_pipeline": {"queue": "generation"},
+        "build.run": {"queue": "build"},
+        "deploy.run": {"queue": "deploy"},
+        "edit.edit_element": {"queue": "generation"},
     },
     # Периодические задачи (Celery Beat)
     beat_schedule={

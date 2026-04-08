@@ -119,7 +119,7 @@ echo "=== Upload complete ==="
                                     client.V1EnvVar(name="PROJECT_ID", value=project_id),
                                     client.V1EnvVar(
                                         name="MINIO_URL",
-                                        value=f"{'https' if settings.MINIO_SECURE else 'http'}://{settings.MINIO_ENDPOINT}"
+                                        value=f"{'https' if settings.MINIO_SECURE else 'http'}://{settings.MINIO_ENDPOINT_K8S or settings.MINIO_ENDPOINT}"
                                     ),
                                     client.V1EnvVar(
                                         name="MINIO_ACCESS_KEY",

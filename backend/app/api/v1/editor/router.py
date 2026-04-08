@@ -82,8 +82,11 @@ async def get_file_code(
     """Вернуть исходный код файла проекта из MinIO."""
     user_id: str = user["internal_user_id"]
     storage = StorageService()
-    minio_path = f"projects/{user_id}/{project_id}/{file_path.lstrip('/')}"
-    raw = await storage.get_file("projects", minio_path)
+    minio_path = f"projects/{user_id}/{project_id}/src/{file_path.lstrip('/')}"
+    try:
+        raw = await storage.get_file("projects", minio_path)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     if raw is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
     return {"project_id": project_id, "file_path": file_path, "content": raw.decode("utf-8")}
@@ -98,7 +101,7 @@ async def update_file_code(
     """Ручное обновление файла (без AI), создаёт снапшот текущей версии перед сохранением."""
     user_id: str = user["internal_user_id"]
     storage = StorageService()
-    minio_path = f"projects/{user_id}/{body.project_id}/{body.file_path.lstrip('/')}"
+    minio_path = f"projects/{user_id}/{body.project_id}/src/{body.file_path.lstrip('/')}"
 
     current = await storage.get_file("projects", minio_path)
     if current is not None:

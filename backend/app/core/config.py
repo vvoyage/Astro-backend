@@ -15,11 +15,15 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str | None = None  # напр. https://api.proxyapi.ru/openai/v1
 
     # MinIO settings
-    MINIO_ENDPOINT: str 
-    MINIO_ACCESS_KEY: str 
-    MINIO_SECRET_KEY: str 
-    MINIO_SECURE: bool 
-    MINIO_PUBLIC_URL: str 
+    MINIO_ENDPOINT: str
+    MINIO_ACCESS_KEY: str
+    MINIO_SECRET_KEY: str
+    MINIO_SECURE: bool
+    MINIO_PUBLIC_URL: str
+    # Адрес MinIO, доступный из Kubernetes pod'ов (minikube → host)
+    # По умолчанию совпадает с MINIO_ENDPOINT, для локальной разработки
+    # с minikube нужно указать host.docker.internal:9000
+    MINIO_ENDPOINT_K8S: str | None = None
 
     # RabbitMQ settings
     RABBITMQ_URL: str 
