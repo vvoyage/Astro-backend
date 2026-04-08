@@ -37,6 +37,16 @@ async def update_status(db: AsyncSession, project_id: UUID, status: str) -> Proj
     return project
 
 
+async def set_active_snapshot_version(
+    db: AsyncSession, project_id: UUID, version: int | None
+) -> Project | None:
+    project = await get_by_id(db, project_id)
+    if project:
+        project.active_snapshot_version = version  # type: ignore[assignment]
+        await db.flush()
+    return project
+
+
 async def delete(db: AsyncSession, project_id: UUID) -> bool:
     project = await get_by_id(db, project_id)
     if project:

@@ -17,13 +17,13 @@ from app.workers.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 _BUILD_POLL_INTERVAL = 10   # секунды между проверками статуса
-_BUILD_TIMEOUT = 300        # максимальное время ожидания завершения job'а
+_BUILD_TIMEOUT = 600        # максимальное время ожидания завершения job'а
 
 
 _BUILD_LOCK_TTL = _BUILD_TIMEOUT + 120   # лок истекает даже если воркер упал
 
 
-@celery_app.task(bind=True, name="build.run", max_retries=3, time_limit=600)
+@celery_app.task(bind=True, name="build.run", max_retries=10, time_limit=900)
 def run_build(self, project_id: str, user_id: str) -> dict:
     """
     1. Захватывает Redis-лок на project_id, чтобы одновременно выполнялся только один билд.
@@ -41,8 +41,7 @@ def run_build(self, project_id: str, user_id: str) -> dict:
         raise self.retry(exc=RuntimeError("Build locked"), countdown=60)
 
     try:
-        asyncio.run(engine.dispose())
-        asyncio.run(_build(project_id, user_id))
+        asyncio.run(_run(project_id, user_id))
     except Exception as exc:
         logger.exception("Build failed for project %s: %s", project_id, exc)
         _set_redis_status(project_id, "failed", 0)
@@ -72,7 +71,21 @@ def _set_redis_status(project_id: str, stage: str, progress: int, **extra) -> No
         logger.warning("Could not write Redis status for project %s", project_id)
 
 
+async def _run(project_id: str, user_id: str) -> None:
+    await engine.dispose()
+    await _build(project_id, user_id)
+
+
 async def _build(project_id: str, user_id: str) -> None:
+    if settings.BUILD_SKIP:
+        logger.info("BUILD_SKIP=True, skipping K8s build for project %s", project_id)
+        async with AsyncSessionFactory() as db:
+            await project_repo.update_status(db, UUID(project_id), "ready")
+            await db.commit()
+        preview_url = f"{settings.MINIO_PUBLIC_URL}/astro-projects/projects/{user_id}/{project_id}/build/index.html"
+        _set_redis_status(project_id, "done", 100, preview_url=preview_url)
+        return
+
     k8s = KubernetesService()
 
     # Создаём build Job (скрипт внутри job'а сам копирует dist/ в MinIO)

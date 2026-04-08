@@ -29,8 +29,11 @@ class Settings(BaseSettings):
     RABBITMQ_URL: str 
 
     # Kubernetes settings
-    KUBERNETES_NAMESPACE: str 
-    KUBERNETES_SERVICE_ACCOUNT: str 
+    KUBERNETES_NAMESPACE: str
+    KUBERNETES_SERVICE_ACCOUNT: str
+    # Если True — шаг сборки пропускается, проект сразу помечается "ready".
+    # Используется в локальной разработке, когда K8s недоступен.
+    BUILD_SKIP: bool = False
     
     # Node.js builder settings
     NODE_VERSION: str 

@@ -14,6 +14,7 @@ from app.agents.optimizer import OptimizerAgent
 from app.core.config import settings
 from app.db.database import AsyncSessionFactory, engine
 from app.repositories import project as project_repo
+from app.repositories import snapshot as snapshot_repo
 from app.services.storage import StorageService
 from app.workers.celery_app import celery_app
 
@@ -36,10 +37,7 @@ def run_generation_pipeline(self, project_id: str, user_id: str, prompt: str, ai
         raise self.retry(exc=exc, countdown=10)
 
     try:
-        # сбрасываем старые asyncpg-соединения от предыдущего event loop
-        # (актуально при --pool=solo, где asyncio.run() переиспользует процесс)
-        asyncio.run(engine.dispose())
-        asyncio.run(_pipeline(project_id, user_id, prompt, ai_model, storage))
+        asyncio.run(_run_pipeline(project_id, user_id, prompt, ai_model, storage))
     except Exception as exc:
         logger.exception("Generation pipeline failed for project %s: %s", project_id, exc)
         _set_redis_status(project_id, "failed", 0)
@@ -60,6 +58,11 @@ def _set_redis_status(project_id: str, stage: str, progress: int) -> None:
         )
     except Exception:
         logger.warning("Could not write Redis status for project %s", project_id)
+
+
+async def _run_pipeline(project_id: str, user_id: str, prompt: str, ai_model: str, storage: StorageService) -> None:
+    await engine.dispose()
+    await _pipeline(project_id, user_id, prompt, ai_model, storage)
 
 
 async def _pipeline(project_id: str, user_id: str, prompt: str, ai_model: str, storage: StorageService) -> None:
@@ -105,6 +108,24 @@ async def _pipeline(project_id: str, user_id: str, prompt: str, ai_model: str, s
     await storage.save_source_files(user_id, project_id, generated_files)
     logger.info("Source files saved for project %s", project_id)
     _set_redis_status(project_id, "saving", 80)
+
+    # создаём снапшот v1 — начальное состояние проекта (только src/-файлы, остальные не редактируются)
+    src_files = {p: c for p, c in generated_files.items() if p.lstrip("/").startswith("src/")}
+    async with AsyncSessionFactory() as db:
+        for path, content in src_files.items():
+            file_path = path.lstrip("/").removeprefix("src/")
+            snap_path = f"projects/{user_id}/{project_id}/snapshots/v1/{file_path}"
+            await storage.save_file("projects", snap_path, content.encode("utf-8"))
+            await snapshot_repo.create(
+                db,
+                project_id=UUID(project_id),
+                version=1,
+                minio_path=snap_path,
+                description=f"Первоначальная генерация: {prompt[:200]}",
+            )
+        await project_repo.set_active_snapshot_version(db, UUID(project_id), 1)
+        await db.commit()
+    logger.info("Initial snapshot v1 created for project %s (%d src files)", project_id, len(src_files))
 
     # запускаем сборку (импорт здесь, чтобы не было circular import на уровне модуля)
     from app.workers.tasks.build import run_build  # noqa: PLC0415

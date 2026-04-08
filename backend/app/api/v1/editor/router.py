@@ -7,9 +7,11 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.dependencies import CurrentUser, DbSession, RedisClient
+from app.repositories import project as project_repo
 from app.repositories import snapshot as snapshot_repo
 from app.schemas.editor import EditElementRequest, EditElementResponse, UpdateFileRequest
 from app.services.storage import StorageService
+from app.workers.tasks.build import run_build as run_build_task
 from app.workers.tasks.edit import edit_element as edit_element_task
 
 router = APIRouter(prefix="/editor", tags=["editor"])
@@ -92,34 +94,56 @@ async def get_file_code(
     return {"project_id": project_id, "file_path": file_path, "content": raw.decode("utf-8")}
 
 
+@router.post("/rebuild", status_code=status.HTTP_202_ACCEPTED)
+async def rebuild_project(
+    project_id: str,
+    user: CurrentUser,
+    redis: RedisClient,
+) -> dict:
+    """Запускает пересборку Astro-проекта после ручного редактирования файлов.
+
+    Пишет начальный статус в Redis (чтобы SSE /generation/{id}/status сразу ответил),
+    затем ставит Celery-задачу run_build в очередь.
+    """
+    user_id: str = user["internal_user_id"]
+    await redis.set(
+        f"generation:{project_id}:status",
+        json.dumps({"stage": "building", "progress": 70}),
+        ex=86400,
+    )
+    run_build_task.delay(project_id, user_id)
+    return {"status": "queued", "project_id": project_id}
+
+
 @router.put("/file")
 async def update_file_code(
     body: UpdateFileRequest,
     db: DbSession,
     user: CurrentUser,
 ) -> dict:
-    """Ручное обновление файла (без AI), создаёт снапшот текущей версии перед сохранением."""
+    """Ручное обновление файла (без AI). Сохраняет новое содержимое, затем создаёт снапшот новой версии."""
     user_id: str = user["internal_user_id"]
     storage = StorageService()
     minio_path = f"projects/{user_id}/{body.project_id}/src/{body.file_path.lstrip('/')}"
 
-    current = await storage.get_file("projects", minio_path)
-    if current is not None:
-        latest_version = await snapshot_repo.get_latest_version(db, UUID(body.project_id))
-        new_version = latest_version + 1
-        snapshot_path = (
-            f"projects/{user_id}/{body.project_id}/snapshots/v{new_version}"
-            f"/{body.file_path.lstrip('/')}"
-        )
-        await storage.save_file("projects", snapshot_path, current)
-        await snapshot_repo.create(
-            db,
-            project_id=UUID(body.project_id),
-            version=new_version,
-            minio_path=snapshot_path,
-            description="Manual file update",
-        )
-        await db.commit()
+    new_content = body.content.encode("utf-8")
+    await storage.save_file("projects", minio_path, new_content)
 
-    await storage.save_file("projects", minio_path, body.content.encode("utf-8"))
+    latest_version = await snapshot_repo.get_latest_version(db, UUID(body.project_id))
+    new_version = latest_version + 1
+    snapshot_path = (
+        f"projects/{user_id}/{body.project_id}/snapshots/v{new_version}"
+        f"/{body.file_path.lstrip('/')}"
+    )
+    await storage.save_file("projects", snapshot_path, new_content)
+    await snapshot_repo.create(
+        db,
+        project_id=UUID(body.project_id),
+        version=new_version,
+        minio_path=snapshot_path,
+        description="Manual file update",
+    )
+    await project_repo.set_active_snapshot_version(db, UUID(body.project_id), new_version)
+    await db.commit()
+
     return {"project_id": body.project_id, "file_path": body.file_path, "status": "saved"}

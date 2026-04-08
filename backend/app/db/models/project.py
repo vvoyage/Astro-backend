@@ -1,7 +1,7 @@
 
 from datetime import datetime
 from uuid import UUID, uuid4
-from sqlalchemy import String, DateTime, ForeignKey
+from sqlalchemy import String, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 from app.db.database import Base
@@ -18,6 +18,7 @@ class Project(Base):
     status: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="queued", default="queued"
     )
+    active_snapshot_version: Mapped[int | None] = mapped_column(Integer, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now()

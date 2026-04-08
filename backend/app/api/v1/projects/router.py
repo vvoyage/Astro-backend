@@ -10,11 +10,14 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.config import settings
 from app.core.dependencies import CurrentUser, DbSession
+from app.db.models.asset import Asset as AssetModel
+from app.db.models.deployment import Deployment as DeploymentModel
 from app.db.models.project import Project as ProjectModel
+from app.db.models.snapshot import Snapshot as SnapshotModel
 from app.db.models.template import Template as TemplateModel
 from app.schemas.project import Project, ProjectCreate, ProjectPreview, ProjectUpdate
 from app.services.storage import StorageService
@@ -224,44 +227,43 @@ async def export_project(
     user: CurrentUser,
     session: DbSession,
 ) -> StreamingResponse:
-    """Стримит ZIP-архив всех исходных файлов проекта."""
+    """Стримит ZIP-архив: src/ (исходники) + build/ (готовый сайт)."""
     user_id = UUID(user["internal_user_id"])
     project = await _get_owned_project(session, project_id, user_id)
 
-    src_prefix = f"{project.s3_path}/src"
     storage = StorageService()
+    base_path = project.s3_path
 
-    try:
-        file_paths = await storage.list_files("projects", src_prefix)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error listing project files: {e}",
-        )
+    # Собираем файлы из src/ и build/ в один проход
+    all_paths: list[str] = []
+    for prefix in (f"{base_path}/src", f"{base_path}/build"):
+        try:
+            paths = await storage.list_files("projects", prefix)
+            all_paths.extend(paths)
+        except Exception:
+            pass  # если одна из папок отсутствует — не фатально
 
-    if not file_paths:
+    if not all_paths:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No source files found for this project",
+            detail="No files found for this project",
         )
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for path in file_paths:
+        for path in all_paths:
             if path.endswith("/"):
-                continue  # пропускаем маркеры директорий
+                continue
             try:
                 data = await storage.get_file("projects", path)
                 if data is not None:
-                    # Убираем префикс проекта — в zip хранятся относительные пути
-                    arc_name = path[len(project.s3_path):].lstrip("/")
+                    arc_name = path[len(base_path):].lstrip("/")
                     zf.writestr(arc_name, data)
             except Exception:
-                pass  # нечитаемые файлы пропускаем, не прерывая архивацию
+                pass
 
     buf.seek(0)
     filename = f"{project.name or str(project_id)}.zip"
-    # RFC 5987: filename*= позволяет передавать не-ASCII символы в заголовке
     filename_encoded = urllib.parse.quote(filename, safe="")
     return StreamingResponse(
         buf,
@@ -277,6 +279,7 @@ async def export_project(
 class ProjectStatus(BaseModel):
     status: str
     preview_url: Optional[str]
+    active_snapshot_version: Optional[int] = None
 
 
 @router.get("/{project_id}/status", response_model=ProjectStatus)
@@ -285,7 +288,7 @@ async def get_project_status(
     user: CurrentUser,
     session: DbSession,
 ) -> ProjectStatus:
-    """Returns the current build status and preview URL for polling clients."""
+    """Returns the current build status, preview URL and active snapshot version for polling clients."""
     user_id = UUID(user["internal_user_id"])
     project = await _get_owned_project(session, project_id, user_id)
 
@@ -296,7 +299,11 @@ async def get_project_status(
             f"/{project.s3_path}/build/index.html"
         )
 
-    return ProjectStatus(status=project.status, preview_url=preview_url)
+    return ProjectStatus(
+        status=project.status,
+        preview_url=preview_url,
+        active_snapshot_version=project.active_snapshot_version,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +325,11 @@ async def delete_project(
         await storage.delete_directory("projects", project.s3_path + "/")
     except Exception:
         pass  # best-effort: удаляем из БД даже если MinIO вернул ошибку
+
+    # Удаляем связанные записи до удаления проекта (FK constraint)
+    await session.execute(delete(SnapshotModel).where(SnapshotModel.project_id == project_id))
+    await session.execute(delete(DeploymentModel).where(DeploymentModel.project_id == project_id))
+    await session.execute(delete(AssetModel).where(AssetModel.project_id == project_id))
 
     await session.delete(project)
     await session.flush()

@@ -18,6 +18,24 @@ async def list_by_project(db: AsyncSession, project_id: UUID) -> list[Snapshot]:
     return list(result.scalars().all())
 
 
+async def list_by_version(db: AsyncSession, project_id: UUID, version: int) -> list[Snapshot]:
+    result = await db.execute(
+        select(Snapshot)
+        .where(Snapshot.project_id == project_id, Snapshot.version == version)
+    )
+    return list(result.scalars().all())
+
+
+async def list_up_to_version(db: AsyncSession, project_id: UUID, version: int) -> list[Snapshot]:
+    """All snapshots for the project at version <= given version, newest first."""
+    result = await db.execute(
+        select(Snapshot)
+        .where(Snapshot.project_id == project_id, Snapshot.version <= version)
+        .order_by(Snapshot.version.desc())
+    )
+    return list(result.scalars().all())
+
+
 async def get_by_id(db: AsyncSession, snapshot_id: UUID) -> Snapshot | None:
     result = await db.execute(select(Snapshot).where(Snapshot.id == snapshot_id))
     return result.scalar_one_or_none()
