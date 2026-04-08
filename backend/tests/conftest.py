@@ -50,6 +50,7 @@ class _FakeBase:
 
 _stub("sqlalchemy")
 _stub("sqlalchemy.ext")
+_stub("sqlalchemy.exc")
 
 _sa_asyncio = _stub("sqlalchemy.ext.asyncio")   # create_async_engine и др. → MagicMock
 _sa_orm = _stub("sqlalchemy.orm")
@@ -123,10 +124,45 @@ _fastapi_security = _stub("fastapi.security")
 _fastapi_security.HTTPBearer = MagicMock
 _fastapi_security.HTTPAuthorizationCredentials = MagicMock
 
-# --- app.core.security.keycloak ---
-# Нужен для загрузки app.core.dependencies (verify_keycloak_token).
+
+async def _fake_streaming_body(content):
+    """Async generator: читает BytesIO или другой контент за один чанк."""
+    if hasattr(content, "read"):
+        data = content.read()
+        if data:
+            yield data
+    else:
+        for chunk in content:
+            yield chunk
+
+
+class _FakeStreamingResponse:
+    """Минимальная замена fastapi.responses.StreamingResponse для unit-тестов."""
+
+    def __init__(self, content, status_code=200, headers=None, media_type=None, background=None):
+        self.body_iterator = _fake_streaming_body(content)
+        self.status_code = status_code
+        self.media_type = media_type
+        self.headers = dict(headers) if headers else {}
+
+    @classmethod
+    def __class_getitem__(cls, item):
+        return cls
+
+
+_fastapi_responses = _stub("fastapi.responses")
+_fastapi_responses.StreamingResponse = _FakeStreamingResponse
+_fastapi_responses.JSONResponse = MagicMock
+_fastapi_responses.HTMLResponse = MagicMock
+_fastapi_responses.FileResponse = MagicMock
+_fastapi_responses.RedirectResponse = MagicMock
+
+# --- app.core.security.* ---
+# Нужны для загрузки app.core.dependencies и auth-роутера.
 _stub("app.core.security")
 _stub("app.core.security.keycloak")
+_stub("app.core.security.keycloak_admin")
+_stub("app.core.security.password")
 
 # ---------------------------------------------------------------------------
 # Минимальные env vars, чтобы Pydantic Settings не падал при импорте

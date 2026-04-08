@@ -13,7 +13,7 @@ from kubernetes import client, config
 from app.core.config import settings
 
 
-async def test_connections():
+async def _check_connections():
     # Проверка MinIO
     storage = StorageService()
     try:
@@ -41,4 +41,5 @@ async def test_connections():
 
 # Запустить тест
 import asyncio
-asyncio.run(test_connections())
+if __name__ == "__main__":
+    asyncio.run(_check_connections())

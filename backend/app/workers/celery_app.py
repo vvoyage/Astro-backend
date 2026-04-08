@@ -12,6 +12,7 @@ celery_app = Celery(
         "app.workers.tasks.build",
         "app.workers.tasks.deploy",
         "app.workers.tasks.edit",
+        "app.workers.tasks.sync_users",
     ],
 )
 
@@ -30,5 +31,12 @@ celery_app.conf.update(
         "app.workers.tasks.build.*": {"queue": "build"},
         "app.workers.tasks.deploy.*": {"queue": "deploy"},
         "app.workers.tasks.edit.*": {"queue": "generation"},
+    },
+    # Периодические задачи (Celery Beat)
+    beat_schedule={
+        "purge-deleted-keycloak-users": {
+            "task": "sync_users.purge_deleted_keycloak_users",
+            "schedule": 600,  # каждые 10 минут
+        },
     },
 )

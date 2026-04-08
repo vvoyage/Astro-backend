@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -5,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import delete as sql_delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_redis
@@ -13,9 +15,15 @@ from app.core.security.keycloak import verify_keycloak_token
 from app.core.security.keycloak_admin import create_keycloak_user, delete_keycloak_user
 from app.core.security.password import validate_password
 from app.db.database import get_async_session
+from app.db.models.asset import Asset
+from app.db.models.deployment import Deployment
+from app.db.models.project import Project
+from app.db.models.snapshot import Snapshot
 from app.db.models.user import User
 from app.schemas.user import UserResponse
 from .dependencies import get_current_active_user
+
+logger = logging.getLogger(__name__)
 
 _bearer = HTTPBearer(auto_error=True)
 
@@ -86,8 +94,17 @@ async def register(
         session.add(user)
         await session.commit()
         await session.refresh(user)
+    except IntegrityError:
+        # Email уже есть в Postgres. Keycloak-аккаунт только что создан,
+        # откатываем его чтобы не было дубля, и сообщаем пользователю.
+        await session.rollback()
+        await delete_keycloak_user(keycloak_id)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
     except Exception:
-        # Rollback: удаляем из Keycloak чтобы не было orphan-аккаунта
+        await session.rollback()
         await delete_keycloak_user(keycloak_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -102,7 +119,7 @@ async def register(
 
 
 # ---------------------------------------------------------------------------
-# Keycloak endpoints
+# Эндпоинты Keycloak
 # ---------------------------------------------------------------------------
 
 @router.get("/me", response_model=UserResponse)
@@ -179,3 +196,60 @@ async def sync_keycloak_user(
         full_name=user.full_name,
         created=created,
     )
+
+
+# ---------------------------------------------------------------------------
+# Вспомогательные функции
+# ---------------------------------------------------------------------------
+
+async def _purge_user_from_db(session: AsyncSession, user: User) -> None:
+    """Удалить пользователя и все его данные из PostgreSQL.
+
+    Порядок: assets → snapshots → deployments → projects → user,
+    чтобы не нарушать FK-ограничения (ondelete не задан в моделях).
+    """
+    project_ids_result = await session.execute(
+        select(Project.id).where(Project.user_id == user.id)
+    )
+    project_ids = [row[0] for row in project_ids_result.all()]
+
+    if project_ids:
+        await session.execute(sql_delete(Asset).where(Asset.project_id.in_(project_ids)))
+        await session.execute(sql_delete(Snapshot).where(Snapshot.project_id.in_(project_ids)))
+        await session.execute(sql_delete(Deployment).where(Deployment.project_id.in_(project_ids)))
+        await session.execute(sql_delete(Project).where(Project.id.in_(project_ids)))
+
+    await session.delete(user)
+    await session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Самоудаление
+# ---------------------------------------------------------------------------
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+) -> None:
+    """Удалить собственный аккаунт.
+
+    Сначала удаляет пользователя из Keycloak (инвалидирует все сессии),
+    затем каскадно удаляет все данные из PostgreSQL.
+    """
+    keycloak_id = current_user.keycloak_id
+
+    # Keycloak-удаление первым: если оно упадёт — PG остаётся нетронутым.
+    if keycloak_id:
+        await delete_keycloak_user(keycloak_id)
+
+    try:
+        await _purge_user_from_db(session, current_user)
+    except Exception:
+        logger.exception(
+            "Failed to purge user %s from DB after Keycloak deletion", current_user.id
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Account removed from Keycloak but DB cleanup failed",
+        )

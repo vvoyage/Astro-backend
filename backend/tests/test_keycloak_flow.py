@@ -557,6 +557,87 @@ class TestTemplates:
 # Тесты: Проверка работоспособности (healthcheck)
 # ---------------------------------------------------------------------------
 
+class TestDeleteMe:
+    def test_delete_me_without_token_returns_403(self):
+        resp = httpx.delete(f"{BACKEND}/auth/me")
+        assert resp.status_code == 403
+
+    def test_delete_me_with_invalid_token_returns_401(self):
+        resp = httpx.delete(
+            f"{BACKEND}/auth/me",
+            headers={"Authorization": "Bearer invalid.token.here"},
+        )
+        assert resp.status_code == 401
+
+    def test_delete_me_removes_user_from_keycloak_and_pg(self):
+        """Регистрируем отдельного пользователя, удаляем через DELETE /auth/me,
+        убеждаемся что нет ни в Keycloak, ни в PostgreSQL."""
+        run_id = uuid.uuid4().hex[:8]
+        email = f"pytest-del-{run_id}@example.com"
+        password = "DelPass1!"
+
+        # Регистрируем
+        reg = httpx.post(
+            f"{BACKEND}/auth/register",
+            json={"email": email, "password": password, "first_name": "Del", "last_name": "Test"},
+        )
+        assert reg.status_code == 201, f"Register failed: {reg.text}"
+
+        # Получаем токен и синхронизируем в PG
+        token = _get_user_token(email, password)
+        sync = _sync(token)
+        assert sync.status_code == 200
+
+        # Удаляем аккаунт
+        del_resp = httpx.delete(
+            f"{BACKEND}/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert del_resp.status_code == 204, f"Delete failed: {del_resp.text}"
+
+        # Пользователь должен исчезнуть из Keycloak
+        kc_token = _kc_admin_token()
+        kc_users = httpx.get(
+            f"{KC_BASE}/admin/realms/{KC_REALM}/users",
+            params={"email": email},
+            headers={"Authorization": f"Bearer {kc_token}"},
+        ).json()
+        assert len(kc_users) == 0, f"User still in Keycloak: {kc_users}"
+
+        # После удаления из Keycloak и PG старый JWT
+        # не находит пользователя в базе → 401
+        me_resp = httpx.get(
+            f"{BACKEND}/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert me_resp.status_code == 401
+
+    def test_delete_me_is_idempotent_with_fresh_token(self, registered_user):
+        """Нельзя удалить уже удалённый аккаунт — токен не выдаётся (401 от Keycloak)."""
+        run_id = uuid.uuid4().hex[:8]
+        email = f"pytest-del2-{run_id}@example.com"
+        password = "DelPass1!"
+
+        httpx.post(
+            f"{BACKEND}/auth/register",
+            json={"email": email, "password": password},
+        )
+        token = _get_user_token(email, password)
+        _sync(token)
+
+        # Первое удаление — успешно
+        r1 = httpx.delete(f"{BACKEND}/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert r1.status_code == 204
+
+        # Второй DELETE с тем же JWT — пользователя нет ни в Keycloak ни в PG
+        r2 = httpx.delete(f"{BACKEND}/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert r2.status_code in (401, 404)
+
+
+# ---------------------------------------------------------------------------
+# Тесты: Проверка работоспособности (healthcheck)
+# ---------------------------------------------------------------------------
+
 class TestHealth:
     def test_health_returns_healthy(self):
         resp = httpx.get("http://localhost:8001/api/health")

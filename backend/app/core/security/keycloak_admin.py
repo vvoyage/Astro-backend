@@ -73,6 +73,7 @@ async def create_keycloak_user(
                 "lastName": last_name,
                 "enabled": True,
                 "emailVerified": True,
+                "requiredActions": [],
                 "credentials": [
                     {"type": "password", "value": password, "temporary": False}
                 ],
@@ -116,10 +117,20 @@ async def create_keycloak_user(
 
 
 async def delete_keycloak_user(keycloak_id: str) -> None:
-    """Удалить пользователя из Keycloak (используется для rollback при ошибке sync)."""
+    """Удалить пользователя из Keycloak.
+
+    Используется как для rollback при ошибке синхронизации, так и при
+    явном удалении аккаунта через приложение.
+    Удаление автоматически инвалидирует все активные сессии пользователя.
+    """
     async with httpx.AsyncClient(timeout=10) as client:
         token = await _get_admin_token(client)
-        await client.delete(
+        resp = await client.delete(
             f"{_ADMIN_BASE}/users/{keycloak_id}",
             headers={"Authorization": f"Bearer {token}"},
         )
+        if resp.status_code not in (200, 204, 404):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Keycloak user deletion failed: {resp.text}",
+            )

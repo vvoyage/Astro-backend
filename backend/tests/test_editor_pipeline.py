@@ -12,10 +12,15 @@
 """
 from __future__ import annotations
 import json, os, sys, time
-import requests
+requests = pytest = None
+try:
+    import requests
+    import redis as redis_lib
+    import psycopg2
+except ImportError as _e:
+    import pytest
+    pytest.skip(f"Integration deps missing: {_e}", allow_module_level=True)
 from minio import Minio
-import redis as redis_lib
-import psycopg2
 
 API_URL       = os.getenv("API_URL",       "http://127.0.0.1:8001")
 USER_ID       = os.getenv("USER_ID",       "33a951dc-3268-498c-ba66-cde648b9fe24")

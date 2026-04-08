@@ -98,6 +98,34 @@ services:
       retries: 10
       start_period: 60s
 
+  celery-worker:
+    image: python:3.11-slim
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ../backend:/app
+      - celery_pip_cache:/usr/local/lib/python3.11/site-packages
+    command: >
+      sh -c "pip install -q -r requirements.txt &&
+             celery -A app.workers.celery_app worker --beat -Q celery,generation,build,deploy --loglevel=info"
+    env_file:
+      - ../backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://astro:astro_pass@postgres:5432/astro_db
+      SYNC_DATABASE_URL: postgresql+psycopg2://astro:astro_pass@postgres:5432/astro_db
+      REDIS_URL: redis://redis:6379/0
+      RABBITMQ_URL: amqp://astro:astro_pass@rabbitmq:5672/astro_vhost
+      MINIO_ENDPOINT: minio:9000
+      MINIO_PUBLIC_URL: http://minio:9000
+      KEYCLOAK_URL: http://keycloak:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   nginx:
     image: nginx:1.25-alpine
     restart: unless-stopped
@@ -119,3 +147,4 @@ volumes:
   redis_data:
   rabbitmq_data:
   minio_data:
+  celery_pip_cache:

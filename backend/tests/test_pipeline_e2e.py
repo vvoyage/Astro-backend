@@ -107,6 +107,11 @@ def _import_redis():
         import redis as redis_lib
         return redis_lib
     except ImportError:
+        try:
+            import pytest as _pt
+            _pt.skip("redis not installed — pip install redis")
+        except Exception:
+            pass
         print(f"{RED}pip install redis{RESET}")
         sys.exit(1)
 
@@ -116,6 +121,11 @@ def _import_requests():
         import requests
         return requests
     except ImportError:
+        try:
+            import pytest as _pt
+            _pt.skip("requests not installed — pip install requests")
+        except Exception:
+            pass
         print(f"{RED}pip install requests{RESET}")
         sys.exit(1)
 
