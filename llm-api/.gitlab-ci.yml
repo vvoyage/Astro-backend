@@ -1,0 +1,29 @@
+
+
+stages:
+  - build
+  - promote-to-dev
+
+
+include:
+  # Подключаем шаблоны джоб. Используем наш репо c ci-templates
+  - project: 'transcriber-app/platform/ci-templates'
+    ref: main
+    file: '.gitlab-ci-shared ideal.yml'
+  # Путь к файлу с variables, уникальных для каждого репо. Внутри репо находится, рядом с gitlab-ci.yml
+  - local: '.gitlab-ci-variables.yml'
+
+
+
+
+# Важно. Не забудьте сделать файл .gitlab-ci-variables.yml с уникальными variables.
+
+
+# Jobs:
+
+build:
+  extends: .build-via-buildkit_with-cache
+
+promote-to-dev:
+  extends: .trigger-gitops-update_gitlab
+

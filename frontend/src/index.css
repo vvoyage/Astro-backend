@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #030712;
+  color: #f9fafb;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+@keyframes progress {
+  0% { width: 0%; margin-left: 0; }
+  50% { width: 60%; margin-left: 20%; }
+  100% { width: 0%; margin-left: 100%; }
+}
+
+/* Отключаем любые анимации на иконках success/error/info */
+[data-sonner-toast]:not([data-type="loading"]) [data-icon] svg {
+  animation: none !important;
+  transform: none !important;
+}
+
+/* Sonner loading icon — static pulsing circle */
+[data-sonner-toast][data-type="loading"] [data-icon] {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+[data-sonner-toast][data-type="loading"] [data-icon] .sonner-loading-wrapper {
+  display: none !important;
+}
+
+[data-sonner-toast][data-type="loading"] [data-icon]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #6366f1;
+  animation: pulse-icon 1.6s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes pulse-icon {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 1; }
+}
+

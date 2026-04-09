@@ -1,0 +1,15 @@
+image:
+  tag: v0.0.1
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: llm-api.veryred.ru
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: llm-api-tls
+      hosts:
+        - llm-api.veryred.ru
+

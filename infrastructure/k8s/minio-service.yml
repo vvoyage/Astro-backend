@@ -1,0 +1,10 @@
+# minio-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+spec:
+  type: ExternalName
+  externalName: host.docker.internal  # Для Windows с Docker Desktop
+  ports:
+  - port: 9000

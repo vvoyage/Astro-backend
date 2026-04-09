@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: project-builder
+spec:
+  template:
+    spec:
+      containers:
+      - name: builder
+        image: node:18
+        command: ["/bin/sh"]
+        args:
+        - "-c"
+        - |
+          # Устанавливаем необходимые инструменты
+          npm install -g create-astro
+          
+          # Создаем временную директорию для проекта
+          mkdir -p /tmp/project
+          cd /tmp/project
+          
+          # Копируем файлы из MinIO
+          mc alias set minio http://minio:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
+          mc cp -r minio/astro-projects/projects/$USER_ID/$PROJECT_ID/src/* .
+          
+          # Устанавливаем зависимости и собираем проект
+          npm install
+          npm run build
+          
+          # Копируем результаты обратно в MinIO
+          mc cp -r dist/* minio/astro-projects/projects/$USER_ID/$PROJECT_ID/build/
+        env:
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secret-key
+        - name: USER_ID
+          value: "$(user_id)"  # Будет заменено при создании job
+        - name: PROJECT_ID
+          value: "$(project_id)"  # Будет заменено при создании job
+      restartPolicy: Never
+  backoffLimit: 4 
