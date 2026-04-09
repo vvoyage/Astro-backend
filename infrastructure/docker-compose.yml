@@ -66,6 +66,23 @@ services:
       timeout: 10s
       retries: 5
 
+  minio-init:
+    image: python:3.12-slim
+    command: >
+      sh -c "pip install minio pydantic-settings loguru -q &&
+             python /app/scripts/init_minio.py"
+    volumes:
+      - ../backend:/app
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+
   keycloak:
     image: keycloak/keycloak:26.3
     restart: unless-stopped

@@ -9,6 +9,7 @@ from uuid import UUID
 import redis as redis_lib
 
 from app.agents.editor import EditorAgent
+from app.agents.planner import PlannerAgent
 from app.core.config import settings
 from app.db.database import AsyncSessionFactory, engine
 from app.repositories import project as project_repo
@@ -27,6 +28,7 @@ def edit_element(
     file_path: str,
     element_id: str,
     prompt: str,
+    element_html: str = "",
     ai_model: str = "gpt-5.4",
     project_context: str = "",
 ) -> dict:
@@ -66,6 +68,7 @@ def edit_element(
                     user_id=user_id,
                     file_path=file_path,
                     element_id=element_id,
+                    element_html=element_html,
                     prompt=prompt,
                     ai_model=ai_model,
                     project_context=project_context,
@@ -104,6 +107,7 @@ async def _edit(
     ai_model: str,
     project_context: str,
     storage: StorageService,
+    element_html: str = "",
 ) -> None:
     _set_redis_status(project_id, "editing", 10)
     logger.info(
@@ -126,6 +130,7 @@ async def _edit(
     new_code = await agent.edit(
         current_code=current_code,
         element_id=element_id,
+        element_html=element_html,
         prompt=prompt,
         project_context=project_context,
     )
@@ -173,8 +178,13 @@ async def _edit_all_files(
     project_context: str,
     storage: StorageService,
 ) -> None:
-    """Применяет AI-инструкцию ко всем исходным файлам проекта, затем одна пересборка."""
-    _set_redis_status(project_id, "editing", 5)
+    """Планирует и применяет AI-правки к нужным файлам проекта, затем одна пересборка.
+
+    Вместо того чтобы гнать один промпт через все файлы подряд, сначала
+    PlannerAgent решает какие файлы трогать и формулирует точечную инструкцию
+    для каждого. При сбое планировщика — fallback: применяем промпт ко всем файлам.
+    """
+    _set_redis_status(project_id, "planning", 5)
     logger.info("All-files edit started: project=%s user=%s", project_id, user_id)
 
     # 1. Список файлов из MinIO
@@ -188,13 +198,36 @@ async def _edit_all_files(
         raise FileNotFoundError(f"No source files found for project {project_id}")
     logger.info("Found %d source files for all-files edit", len(relative_paths))
 
-    total = len(relative_paths)
+    # 2. PlannerAgent: решаем что и где менять
+    planner = PlannerAgent(model=ai_model)
+    plan = await planner.plan(
+        prompt=prompt,
+        files=relative_paths,
+        project_context=project_context,
+    )
+
+    if plan:
+        logger.info(
+            "PlannerAgent plan: %d/%d file(s) to edit: %s",
+            len(plan), len(relative_paths), list(plan.keys()),
+        )
+    else:
+        # Fallback: плановщик вернул пустой ответ — редактируем все файлы исходным промптом
+        logger.warning(
+            "PlannerAgent returned empty plan for project %s, falling back to all-files edit",
+            project_id,
+        )
+        plan = {f: prompt for f in relative_paths}
+
+    _set_redis_status(project_id, "editing", 15)
+
+    total = len(plan)
     agent = EditorAgent(model=ai_model)
     edited: list[tuple[str, bytes]] = []
 
-    # 2. Редактируем каждый файл последовательно
-    for i, rel_path in enumerate(relative_paths):
-        progress = 10 + int(55 * i / total)
+    # 3. Редактируем только файлы из плана, каждый со своей инструкцией
+    for i, (rel_path, file_instruction) in enumerate(plan.items()):
+        progress = 15 + int(50 * i / total)
         _set_redis_status(project_id, "editing", progress)
 
         minio_path = f"{prefix}{rel_path}"
@@ -207,7 +240,7 @@ async def _edit_all_files(
             new_code = await agent.edit(
                 current_code=raw.decode("utf-8"),
                 element_id="",
-                prompt=prompt,
+                prompt=file_instruction,
                 project_context=project_context,
             )
             new_bytes = new_code.encode("utf-8")

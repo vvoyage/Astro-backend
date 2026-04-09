@@ -17,13 +17,37 @@ body {
   100% { width: 0%; margin-left: 100%; }
 }
 
-/* Sonner loading spinner */
-[data-sonner-toast] [data-icon] svg {
-  animation: spin 0.8s linear infinite;
+/* Отключаем любые анимации на иконках success/error/info */
+[data-sonner-toast]:not([data-type="loading"]) [data-icon] svg {
+  animation: none !important;
+  transform: none !important;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+/* Sonner loading icon — static pulsing circle */
+[data-sonner-toast][data-type="loading"] [data-icon] {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+[data-sonner-toast][data-type="loading"] [data-icon] .sonner-loading-wrapper {
+  display: none !important;
+}
+
+[data-sonner-toast][data-type="loading"] [data-icon]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #6366f1;
+  animation: pulse-icon 1.6s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes pulse-icon {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 1; }
 }
 

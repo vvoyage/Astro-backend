@@ -11,6 +11,7 @@ interface EditorStore {
   isBuilding: boolean;
   previewUrl: string | null;
   activeSnapshotVersion: number | null;
+  selectedElement: { editable_id: string; file_path: string; element_html: string } | null;
 
   setProjectId: (id: string) => void;
   setFiles: (files: string[]) => void;
@@ -20,6 +21,7 @@ interface EditorStore {
   setIsEditing: (v: boolean) => void;
   setIsBuilding: (v: boolean) => void;
   setActiveSnapshotVersion: (version: number | null) => void;
+  setSelectedElement: (el: { editable_id: string; file_path: string; element_html: string } | null) => void;
   saveFile: () => Promise<void>;
   reloadCurrentFile: () => Promise<void>;
   refreshPreview: (newUrl?: string) => void;
@@ -35,6 +37,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   isBuilding: false,
   previewUrl: null,
   activeSnapshotVersion: null,
+  selectedElement: null,
 
   setProjectId: (id) => set({ projectId: id }),
   setFiles: (files) => set({ files }),
@@ -44,6 +47,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   setIsEditing: (v) => set({ isEditing: v }),
   setIsBuilding: (v) => set({ isBuilding: v }),
   setActiveSnapshotVersion: (version) => set({ activeSnapshotVersion: version }),
+  setSelectedElement: (el) => set({ selectedElement: el }),
 
   saveFile: async () => {
     const { projectId, currentFile, fileContent } = get();

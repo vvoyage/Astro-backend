@@ -107,6 +107,7 @@ class TestEditElementRouter:
         body = _edit_body(project_id)
         body.element.file_path = "src/components/Hero.astro"
         body.element.editable_id = "hero-cta"
+        body.element.element_html = "<button>Buy</button>"
         body.instruction = "Сделай кнопку красной"
         body.ai_model = "gpt-4o"
 
@@ -124,6 +125,7 @@ class TestEditElementRouter:
             user_id=uid,
             file_path="src/components/Hero.astro",
             element_id="hero-cta",
+            element_html="<button>Buy</button>",
             prompt="Сделай кнопку красной",
             ai_model="gpt-4o",
             project_context="",
@@ -362,6 +364,7 @@ class TestEditTaskCore:
         mock_agent.edit.assert_called_once_with(
             current_code=original_code,
             element_id="hero",
+            element_html="",
             prompt="Сделай красным",
             project_context="",
         )
@@ -575,11 +578,18 @@ class TestEditAllFilesCore:
         else:
             mock_agent.edit = AsyncMock(return_value=llm_return)
 
+        # Мок планировщика: каждый файл получает исходный промпт (эмулирует fallback)
+        mock_planner = MagicMock()
+        mock_planner.plan = AsyncMock(
+            side_effect=lambda prompt, files, project_context="": {f: prompt for f in files}
+        )
+
         mock_create = AsyncMock()
         mock_build = MagicMock()
         mock_build.delay = MagicMock()
 
         with (
+            patch("app.workers.tasks.edit.PlannerAgent", return_value=mock_planner),
             patch("app.workers.tasks.edit.EditorAgent", return_value=mock_agent),
             patch("app.workers.tasks.edit.snapshot_repo.get_latest_version",
                   new=AsyncMock(return_value=latest_version)),
@@ -763,14 +773,19 @@ class TestEditAllFilesCore:
         with patch.object(_storage_mod, "Minio", return_value=mock_client):
             storage = StorageService()
 
-        storage.list_files = AsyncMock(
-            return_value=[f"{prefix}pages/index.astro", f"{prefix}components/Hero.astro"]
-        )
+        files = [f"{prefix}pages/index.astro", f"{prefix}components/Hero.astro"]
+        storage.list_files = AsyncMock(return_value=files)
         storage.get_file = AsyncMock(return_value=None)  # каждый файл "не найден"
         storage.save_file = AsyncMock()
 
+        mock_planner = MagicMock()
+        mock_planner.plan = AsyncMock(
+            side_effect=lambda prompt, files, project_context="": {f: prompt for f in files}
+        )
+
         with (
             patch("app.workers.tasks.edit._set_redis_status"),
+            patch("app.workers.tasks.edit.PlannerAgent", return_value=mock_planner),
             pytest.raises(RuntimeError, match="No files were successfully edited"),
         ):
             await _edit_all_files(
@@ -821,7 +836,13 @@ class TestEditAllFilesCore:
         mock_build = MagicMock()
         mock_build.delay = MagicMock()
 
+        mock_planner = MagicMock()
+        mock_planner.plan = AsyncMock(
+            side_effect=lambda prompt, files, project_context="": {f: prompt for f in files}
+        )
+
         with (
+            patch("app.workers.tasks.edit.PlannerAgent", return_value=mock_planner),
             patch("app.workers.tasks.edit.EditorAgent", return_value=mock_agent),
             patch("app.workers.tasks.edit.snapshot_repo.get_latest_version",
                   new=AsyncMock(return_value=0)),
@@ -846,9 +867,10 @@ class TestEditAllFilesCore:
             )
 
         stages = [c[0][1] for c in mock_redis.call_args_list]
+        assert "planning" in stages
         assert "editing" in stages
         assert "building" in stages
-        assert stages.index("editing") < stages.index("building")
+        assert stages.index("planning") < stages.index("editing") < stages.index("building")
 
     async def test_skips_directory_markers_in_file_list(self):
         """Объекты MinIO, заканчивающиеся на '/', должны фильтроваться."""

@@ -62,6 +62,7 @@ async def edit_element(
         user_id=user_id,
         file_path=body.element.file_path,
         element_id=body.element.editable_id,
+        element_html=body.element.element_html,
         prompt=body.instruction,
         ai_model=body.ai_model,
         project_context="",

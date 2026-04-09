@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { submitAIEdit } from '@/api/editor';
 import { useEditorStore } from '@/store/editorStore';
@@ -9,11 +9,18 @@ import Button from '@/components/ui/Button';
 
 export default function AIEditPanel() {
   const [prompt, setPrompt] = useState('');
-  const { projectId, currentFile, files, setIsEditing, setIsBuilding, refreshPreview, reloadCurrentFile, setActiveSnapshotVersion } =
+  const { projectId, currentFile, files, setIsEditing, setIsBuilding, refreshPreview, reloadCurrentFile, setActiveSnapshotVersion, selectedElement } =
     useEditorStore();
   const qc = useQueryClient();
 
   const [selectedFile, setSelectedFile] = useState<string>('');
+
+  // Автовыбор файла при клике на элемент в превью
+  useEffect(() => {
+    if (selectedElement?.file_path) {
+      setSelectedFile(selectedElement.file_path);
+    }
+  }, [selectedElement]);
 
   const targetFile = selectedFile || currentFile || '';
 
@@ -27,7 +34,7 @@ export default function AIEditPanel() {
     try {
       await submitAIEdit({
         project_id: projectId,
-        element: { editable_id: '', file_path: target, element_html: '' },
+        element: { editable_id: selectedElement?.editable_id ?? '', file_path: target, element_html: selectedElement?.element_html ?? '' },
         instruction: prompt,
       });
 
@@ -82,6 +89,16 @@ export default function AIEditPanel() {
         rows={2}
         className="flex-1 rounded border border-gray-700 bg-gray-900 px-2 py-1.5 text-sm text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none resize-none"
       />
+      <p className="text-[11px] text-gray-500">
+        {selectedElement
+          ? <>
+              Элемент: <span className="font-mono text-indigo-400">#{selectedElement.editable_id.slice(0, 8)}</span>
+              {selectedElement.file_path && (
+                <span className="ml-1 text-gray-600">({selectedElement.file_path})</span>
+              )}
+            </>
+          : 'Кликните на элемент в превью'}
+      </p>
       <Button type="submit" disabled={!prompt.trim() || (selectedFile === '' && !currentFile)}>
         Применить через AI
       </Button>

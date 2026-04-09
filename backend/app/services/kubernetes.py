@@ -106,7 +106,16 @@ echo "=== Final src/ contents ==="
 find src/ -type f | sort
 
 npm install
+
+echo "=== pre-build: injecting editable IDs into source files ==="
+mc cp minio/astro-assets/pre-build.cjs ./pre-build.cjs
+node pre-build.cjs
+
 npm run build
+
+echo "=== post-build: injecting postMessage listener ==="
+mc cp minio/astro-assets/post-build.cjs ./post-build.cjs
+node post-build.cjs
 
 echo "=== Build complete, dist/ ==="
 ls -la dist/

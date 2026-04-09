@@ -44,7 +44,12 @@ def run_build(self, project_id: str, user_id: str) -> dict:
         asyncio.run(_run(project_id, user_id))
     except Exception as exc:
         logger.exception("Build failed for project %s: %s", project_id, exc)
-        _set_redis_status(project_id, "failed", 0)
+        is_last_retry = self.request.retries >= self.max_retries
+        if is_last_retry:
+            _set_redis_status(project_id, "failed", 0)
+        else:
+            # Keep "building" so the frontend SSE stream stays open during retry
+            _set_redis_status(project_id, "building", 80)
         raise self.retry(exc=exc, countdown=15)
     finally:
         try:
